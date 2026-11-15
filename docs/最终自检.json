@@ -1,0 +1,164 @@
+{
+  "ok": true,
+  "at": "2026-11-15T05:28:22.088Z",
+  "electron": "45.3.2",
+  "packaged": false,
+  "hotkeys": {
+    "panel": "Control+Alt+P",
+    "toggle": "Control+Alt+H",
+    "layout": "Control+Alt+B",
+    "fit": "Control+Shift+Alt+F",
+    "quit": "Control+Shift+Alt+Q"
+  },
+  "config": {
+    "openAtLogin": false,
+    "displayIndex": 0,
+    "layout": "split",
+    "glowTint": "blue",
+    "glowStrength": 0.3,
+    "glowRadius": 0.5,
+    "wordPop": true,
+    "wiggle": true,
+    "slam": true,
+    "stroke": true,
+    "showGuides": false,
+    "fontScale": 1,
+    "showTranslation": true,
+    "menuTab": "play",
+    "autoFit": true,
+    "hideWhenNoGame": true,
+    "excludeProcesses": [],
+    "minWindowWidth": 640,
+    "minWindowHeight": 400,
+    "lyricSource": "auto",
+    "lyricOffsetMs": 0
+  },
+  "smtc": {
+    "artist": "陈奕迅",
+    "album": "",
+    "position": 12,
+    "hasCover": true,
+    "app": "QQMusic.exe",
+    "statusValue": 4,
+    "status": "PLAYING",
+    "ok": true,
+    "active": true,
+    "title": "孤勇者",
+    "duration": 265
+  },
+  "dom": {
+    "title": "孤勇者",
+    "status": "播放中",
+    "glyphs": 6,
+    "panel": "panel open",
+    "menuTab": "play",
+    "platform": "QQ 音乐",
+    "cover": {
+      "hidden": false,
+      "hasSrc": false,
+      "srcLen": 86
+    },
+    "fitState": {
+      "active": true,
+      "reason": "process-hint",
+      "excluded": false,
+      "ratio": 0.804,
+      "process": "Warframe.x64",
+      "title": "Warframe",
+      "className": "WarframePublicEvolutionGfxD3D11",
+      "rect": [
+        84,
+        47,
+        1552,
+        943
+      ],
+      "bounds": {
+        "x": 84,
+        "y": 47,
+        "width": 1552,
+        "height": 943
+      },
+      "scale": 1.5
+    },
+    "lyricSrc": "网易云音乐 · 整行时间轴 · 52 行 · 真实逐字",
+    "lyricState": {
+      "mode": "real",
+      "lines": 52,
+      "times": [
+        22.31,
+        28.57,
+        37.07,
+        43.33
+      ],
+      "offsetMs": 0,
+      "meta": {
+        "ok": true,
+        "source": "netease-yrc",
+        "provider": "网易云音乐",
+        "synced": true,
+        "wordSync": true,
+        "cached": false,
+        "count": 52,
+        "title": "孤勇者",
+        "artist": "陈奕迅",
+        "platform": "qqmusic"
+      },
+      "currentIdx": 0,
+      "wordSync": true,
+      "charMode": "absolute"
+    },
+    "glow": {
+      "shadow": "rgba(82, 168, 255, 0.26) 0px 0px 2px, rgba(82, 168, 255, 0.494) 0px 0px 8px, rgba(82, 168, 255, 0.3) 0px 0px 26px, rgba(82, 168, 255, 0.145) 0px 0px 59px",
+      "hasBox": "none",
+      "afterMask": "linear-gradient(90deg, rgb(0, 0, 0) 0%, rgb(0, 0, 0) -8%, rgba(0, 0, 0, 0) -1%)"
+    }
+  },
+  "autoFit": {
+    "active": true,
+    "reason": "process-hint",
+    "excluded": false,
+    "ratio": 0.804,
+    "process": "Warframe.x64",
+    "title": "Warframe",
+    "className": "WarframePublicEvolutionGfxD3D11",
+    "rect": [
+      84,
+      47,
+      1552,
+      943
+    ],
+    "bounds": {
+      "x": 84,
+      "y": 47,
+      "width": 1552,
+      "height": 943
+    },
+    "scale": 1.5
+  },
+  "windowProbe": {
+    "rect": [
+      78,
+      47,
+      1564,
+      949
+    ],
+    "rectPhysical": [
+      126,
+      71,
+      2328,
+      1415
+    ],
+    "caption": true,
+    "className": "WarframePublicEvolutionGfxD3D11"
+  },
+  "lyrics": {
+    "ok": true,
+    "source": "netease-yrc",
+    "provider": "网易云音乐",
+    "wordSync": true,
+    "lines": 52,
+    "synced": true,
+    "cached": false,
+    "error": null
+  }
+}

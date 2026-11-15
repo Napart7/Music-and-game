@@ -1,0 +1,141 @@
+{
+  "ok": true,
+  "at": "2026-11-15T04:23:48.634Z",
+  "electron": "45.3.2",
+  "packaged": true,
+  "hotkeys": {
+    "panel": "Control+Alt+P",
+    "toggle": "Control+Alt+H",
+    "layout": "Control+Alt+B",
+    "fit": "Control+Shift+Alt+F",
+    "quit": "Control+Shift+Alt+Q"
+  },
+  "config": {
+    "openAtLogin": false,
+    "displayIndex": 0,
+    "layout": "split",
+    "glowTint": "white",
+    "glowStrength": 0.3,
+    "glowRadius": 0.5,
+    "wordPop": true,
+    "wiggle": true,
+    "showGuides": false,
+    "autoFit": true,
+    "hideWhenNoGame": false,
+    "excludeProcesses": [],
+    "minWindowWidth": 640,
+    "minWindowHeight": 400,
+    "lyricSource": "auto",
+    "lyricOffsetMs": 0
+  },
+  "smtc": {
+    "artist": "P!NK",
+    "album": "",
+    "position": 12,
+    "hasCover": true,
+    "app": "QQMusic.exe",
+    "statusValue": 4,
+    "status": "PLAYING",
+    "ok": true,
+    "active": true,
+    "title": "True Love",
+    "duration": 231
+  },
+  "dom": {
+    "title": "True Love",
+    "status": "播放中",
+    "glyphs": 49,
+    "panel": "panel",
+    "fitState": {
+      "active": false,
+      "reason": "non-game-app",
+      "excluded": false,
+      "ratio": null,
+      "process": "QQ",
+      "title": "???Сè�ѵء���3���Ự",
+      "className": "Chrome_WidgetWin_1",
+      "rect": [
+        382,
+        187,
+        1136,
+        663
+      ],
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 1707,
+        "height": 1067
+      },
+      "scale": 1.5
+    },
+    "lyricSrc": "LRCLIB · 整行时间轴 · 58 行 · 缓存 · 逐字为推算",
+    "lyricState": {
+      "mode": "real",
+      "lines": 58,
+      "times": [
+        10.32,
+        16.22,
+        20.68,
+        26.39
+      ],
+      "offsetMs": 0,
+      "meta": {
+        "ok": true,
+        "source": "cache",
+        "provider": "LRCLIB",
+        "synced": true,
+        "cached": true,
+        "count": 58,
+        "title": "True Love",
+        "artist": "P!nk"
+      },
+      "currentIdx": 0
+    }
+  },
+  "autoFit": {
+    "active": false,
+    "reason": "non-game-app",
+    "excluded": false,
+    "ratio": null,
+    "process": "QQ",
+    "title": "???Сè�ѵء���3���Ự",
+    "className": "Chrome_WidgetWin_1",
+    "rect": [
+      382,
+      187,
+      1136,
+      663
+    ],
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1707,
+      "height": 1067
+    },
+    "scale": 1.5
+  },
+  "windowProbe": {
+    "rect": [
+      382,
+      187,
+      1136,
+      663
+    ],
+    "rectPhysical": [
+      573,
+      281,
+      1704,
+      994
+    ],
+    "caption": true,
+    "className": "Chrome_WidgetWin_1"
+  },
+  "lyrics": {
+    "ok": true,
+    "source": "cache",
+    "lines": 58,
+    "synced": true,
+    "cached": true,
+    "error": null
+  }
+}

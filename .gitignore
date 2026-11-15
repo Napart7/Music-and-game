@@ -1,0 +1,47 @@
+# 构建产物
+bin/
+obj/
+dist/
+dist-prev/
+dist-old2/
+dist-old3/
+dist-old4/
+build/
+out/
+*.exe
+*.msi
+*.zip
+!tools/**/*.ps1
+
+# 运行时生成（含用户隐私，绝不入库）
+config.toml
+config.json
+cache/
+lyrics-cache/
+*.db
+*.log
+netease_cookie.txt
+qqmusic_cookie.txt
+now_playing.*
+
+# 依赖
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+target/
+Cargo.lock
+
+# IDE / 系统
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# 本地密钥（绝不入库）
+.env
+*.key
+*.pem

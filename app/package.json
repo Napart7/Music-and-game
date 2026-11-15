@@ -1,0 +1,52 @@
+{
+  "name": "glasslyrics",
+  "version": "0.7.0",
+  "description": "Cross-game transparent lyric overlay. No injection, no game memory access.",
+  "main": "main.js",
+  "author": "GlassLyrics contributors",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64"
+  },
+  "devDependencies": {
+    "electron": "45.3.2",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "cn.glasslyrics.overlay",
+    "productName": "GlassLyrics",
+    "copyright": "MIT License",
+    "directories": { "output": "../dist" },
+    "files": [
+      "main.js",
+      "preload.js",
+      "lyrics.js",
+      "providers.js",
+      "renderer/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      { "from": "smtc-bridge.ps1", "to": "smtc-bridge.ps1" },
+      { "from": "smtc-control.ps1", "to": "smtc-control.ps1" },
+      { "from": "window-probe.ps1", "to": "window-probe.ps1" }
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "GlassLyrics"
+    },
+    "portable": { "artifactName": "GlassLyrics-Portable.exe" }
+  }
+}

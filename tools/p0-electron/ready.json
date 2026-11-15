@@ -1,0 +1,11 @@
+{
+  "title": "GlassLyricsElectronP0",
+  "gpuDisabled": false,
+  "electron": "45.3.2",
+  "bounds": {
+    "x": 100,
+    "y": 100,
+    "width": 1202,
+    "height": 702
+  }
+}

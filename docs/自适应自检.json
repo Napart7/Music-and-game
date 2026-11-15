@@ -1,0 +1,49 @@
+{
+  "ok": true,
+  "at": "2026-11-15T04:18:08.529Z",
+  "autoFit": {
+    "active": true,
+    "reason": "process-hint",
+    "excluded": false,
+    "ratio": 0.804,
+    "process": "Warframe.x64",
+    "title": "Warframe",
+    "className": "WarframePublicEvolutionGfxD3D11",
+    "rect": [
+      84,
+      47,
+      1552,
+      943
+    ],
+    "bounds": {
+      "x": 84,
+      "y": 47,
+      "width": 1552,
+      "height": 943
+    },
+    "scale": 1.5
+  },
+  "appliedBounds": {
+    "x": 84,
+    "y": 47,
+    "width": 1552,
+    "height": 944
+  },
+  "windowProbe": {
+    "rect": [
+      78,
+      47,
+      1564,
+      949
+    ],
+    "rectPhysical": [
+      126,
+      71,
+      2328,
+      1415
+    ],
+    "caption": true,
+    "className": "WarframePublicEvolutionGfxD3D11",
+    "process": "Warframe.x64"
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "ok": true,
+  "at": "2026-11-15T03:45:31.313Z",
+  "electron": "45.3.2",
+  "packaged": false,
+  "hotkeys": {
+    "panel": "Control+Alt+P",
+    "toggle": "Control+Alt+H",
+    "layout": "Control+Alt+B",
+    "fit": "Control+Shift+Alt+F",
+    "quit": "Control+Shift+Alt+Q"
+  },
+  "config": {
+    "openAtLogin": false,
+    "displayIndex": 0,
+    "layout": "split",
+    "glowTint": "white",
+    "glowStrength": 0.3,
+    "glowRadius": 0.5,
+    "wordPop": true,
+    "wiggle": true,
+    "showGuides": false,
+    "autoFit": true,
+    "hideWhenNoGame": false,
+    "excludeProcesses": [],
+    "minWindowWidth": 640,
+    "minWindowHeight": 400
+  },
+  "smtc": {
+    "artist": "keshi",
+    "album": "WANTCHU",
+    "position": 40.251,
+    "hasCover": true,
+    "app": "QQMusic.exe",
+    "statusValue": 4,
+    "status": "STOPPED",
+    "ok": true,
+    "active": true,
+    "title": "WANTCHU",
+    "duration": 199.896
+  },
+  "dom": {
+    "title": "WANTCHU",
+    "status": "已停止",
+    "glyphs": 8,
+    "panel": "panel",
+    "fitLabel": "已捕捉 Warframe.x64 · 1552×943"
+  },
+  "autoFit": {
+    "active": true,
+    "reason": "process-hint",
+    "excluded": false,
+    "ratio": 0.804,
+    "process": "Warframe.x64",
+    "title": "Warframe",
+    "className": "WarframePublicEvolutionGfxD3D11",
+    "rect": [
+      84,
+      47,
+      1552,
+      943
+    ],
+    "bounds": {
+      "x": 84,
+      "y": 47,
+      "width": 1552,
+      "height": 943
+    },
+    "scale": 1.5
+  },
+  "windowProbe": {
+    "rect": [
+      78,
+      47,
+      1564,
+      949
+    ],
+    "rectPhysical": [
+      126,
+      71,
+      2328,
+      1415
+    ],
+    "caption": true,
+    "className": "WarframePublicEvolutionGfxD3D11"
+  }
+}

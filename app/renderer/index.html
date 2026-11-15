@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>GlassLyrics</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --text-rgb: 247, 225, 215;      /* DangoMusic textRgb = #F7E1D7 */
+    --glow-rgb: 255, 255, 255;
+    --glow-strength: .3;
+    --glow-radius: .5;
+    --font-scale: 1;
+    --g1: calc(3px + var(--glow-radius) * 10px);
+    --g2: calc(11px + var(--glow-radius) * 30px);
+    --g3: calc(26px + var(--glow-radius) * 66px);
+    --ga: calc(.22 + var(--glow-strength) * 1.0);
+    --ui-scale: 1;
+    --game-w: 100vw;
+    --game-h: 100vh;
+  }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+  body { font-family: system-ui, -apple-system, "Microsoft YaHei", "PingFang SC", sans-serif;
+    color: #f2f6ff; -webkit-font-smoothing: antialiased; user-select: none; }
+
+  /* ---------------- on-screen lyrics (left / right, centre stays clear) ---------------- */
+  .side { position: absolute; top: 50%; transform: translateY(-50%); width: 28vw; pointer-events: none;
+    transition: opacity .35s ease; }
+  .side.left { left: 3.5vw; text-align: left; }
+  .side.right { right: 3.5vw; text-align: right; }
+  .side-label { font-size: 10px; letter-spacing: .22em; color: rgba(160,195,245,.5); margin-bottom: 14px; }
+  .faded { font-size: clamp(14px, 1.3vw, 19px); line-height: 1.8; color: rgba(226,238,255,.34); }
+  .faded.above { margin-bottom: 12px; }
+  .faded.below { margin-top: 14px; }
+  .main-line { position: relative; font-size: calc(clamp(21px, 2.1vw, 33px) * var(--font-scale));
+    font-weight: 600; letter-spacing: .05em; line-height: 1.5; word-break: break-all;
+    transform: scale(var(--slam, 1)); transform-origin: left center; }
+  .side.right .main-line { transform-origin: right center; }
+  .glyph-layer { position: relative; z-index: 2; }
+
+  /* Glow is emitted by the GLYPHS themselves via text-shadow. No blur layer, no box
+     shadow, no clip-path hard edge — those were the cause of the visible rectangles. */
+  .glyph { position: relative; display: inline-block; color: rgb(var(--text-rgb));
+    -webkit-text-stroke: .5px rgba(0,0,0,.45);
+    text-shadow:
+      0 0 2px rgba(var(--glow-rgb), calc(var(--ga) * .5)),
+      0 0 var(--g1) rgba(var(--glow-rgb), calc(var(--ga) * .95)),
+      0 0 var(--g2) rgba(var(--glow-rgb), calc(var(--ga) * .58)),
+      0 0 var(--g3) rgba(var(--glow-rgb), calc(var(--ga) * .28));
+    transform: translate(var(--wx,0px), var(--wy,0px)) scale(var(--pop,1));
+    transform-origin: center 70%; transition: transform .12s linear; }
+  body[data-stroke="0"] .glyph { -webkit-text-stroke: 0; }
+  .glyph::after { content: attr(data-c); position: absolute; left: 0; top: 0; color: #fff;
+    -webkit-text-stroke: 0; white-space: pre; pointer-events: none;
+    text-shadow:
+      0 0 2px rgba(var(--glow-rgb), .9),
+      0 0 var(--g1) rgba(var(--glow-rgb), 1),
+      0 0 var(--g2) rgba(var(--glow-rgb), calc(var(--ga) * 1.05)),
+      0 0 var(--g3) rgba(var(--glow-rgb), calc(var(--ga) * .5));
+    /* Soft-edged karaoke sweep. A gradient mask follows the glyph outline instead of
+       clipping it into a rectangle. */
+    -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 var(--p, -8%), transparent calc(var(--p, -8%) + 7%));
+    mask-image: linear-gradient(90deg, #000 0%, #000 var(--p, -8%), transparent calc(var(--p, -8%) + 7%)); }
+  .tr-line { margin-top: 14px; font-size: clamp(12px, 1.1vw, 16px); color: rgba(206,226,255,.85); }
+  .clock { margin-top: 16px; font-size: 12px; color: rgba(190,210,245,.6); font-variant-numeric: tabular-nums; }
+
+  /* ---------------- liquid-glass main menu ---------------- */
+  .panel { position: absolute; left: 50%; top: 50%;
+    width: min(900px, 86vw); height: min(580px, 78vh);
+    transform: translate(-50%, -47%) scale(.965); opacity: 0; pointer-events: none;
+    display: flex; flex-direction: column; border-radius: 26px; overflow: hidden;
+    background: linear-gradient(135deg, rgba(32,40,70,.62), rgba(10,14,30,.76) 55%, rgba(26,20,48,.68));
+    backdrop-filter: blur(32px) saturate(165%) brightness(1.06);
+    -webkit-backdrop-filter: blur(32px) saturate(165%) brightness(1.06);
+    border: 1px solid rgba(255,255,255,.2);
+    box-shadow: 0 34px 90px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.22);
+    transition: transform .38s cubic-bezier(.22,1,.36,1), opacity .26s ease; }
+  .panel.open { transform: translate(-50%, -50%) scale(1); opacity: 1; pointer-events: auto; }
+  /* SDF-like edge refraction + subtle RGB dispersion, the CSS approximation of ui/glass.frag */
+  .panel::before { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    border-radius: inherit; mix-blend-mode: screen;
+    background:
+      linear-gradient(135deg, rgba(255,255,255,.2), transparent 26%),
+      radial-gradient(120% 95% at -12% -14%, rgba(140,195,255,.26), transparent 52%),
+      radial-gradient(110% 90% at 112% 112%, rgba(255,150,215,.18), transparent 55%),
+      linear-gradient(118deg, transparent 42%, rgba(110,180,255,.07) 49%, rgba(255,140,205,.06) 55%, transparent 63%); }
+  .panel::after { content: ''; position: absolute; inset: 1px; z-index: 1; pointer-events: none;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.07), inset 0 -1px 0 rgba(255,255,255,.12);
+    background: linear-gradient(160deg, rgba(255,255,255,.05), transparent 18%); }
+  .panel > * { position: relative; z-index: 2; }
+
+  .menu-head { display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 22px 13px; border-bottom: 1px solid rgba(255,255,255,.1); }
+  .brand { display: flex; gap: 12px; align-items: center; }
+  .logo { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center;
+    font-size: 18px; color: #101426;
+    background: linear-gradient(135deg, #9ec4ff, #d9a8ff);
+    box-shadow: 0 0 26px rgba(150,180,255,.42), inset 0 1px 0 rgba(255,255,255,.7); }
+  .brand b { font-size: 15px; font-weight: 600; letter-spacing: .04em; }
+  .brand small { display: block; font-size: 10px; color: rgba(200,215,245,.6); margin-top: 2px; }
+  .head-right { display: flex; align-items: center; gap: 10px; }
+  .chip { font-size: 10px; padding: 5px 11px; border-radius: 999px;
+    background: rgba(130,180,255,.14); border: 1px solid rgba(150,190,255,.28); color: #bcdcff; }
+  .icon-btn { width: 30px; height: 30px; border-radius: 9px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.08);
+    color: #eaf2ff; font-size: 14px; }
+  .icon-btn:hover { background: rgba(255,255,255,.2); }
+
+  .menu-body { flex: 1; display: flex; min-height: 0; }
+  .menu-nav { width: 152px; flex: 0 0 152px; padding: 14px 11px; display: flex; flex-direction: column;
+    gap: 4px; border-right: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.022); }
+  .menu-nav button { text-align: left; padding: 10px 12px; border-radius: 11px; cursor: pointer;
+    border: 1px solid transparent; background: transparent; color: rgba(215,228,250,.72); font-size: 12px; }
+  .menu-nav button:hover { background: rgba(255,255,255,.07); color: #fff; }
+  .menu-nav button.active { color: #fff;
+    background: linear-gradient(90deg, rgba(130,175,255,.24), rgba(190,150,255,.12));
+    border-color: rgba(160,195,255,.3); box-shadow: inset 0 1px 0 rgba(255,255,255,.16); }
+  .menu-content { flex: 1; min-width: 0; padding: 18px 22px 22px; overflow-y: auto; }
+  .menu-content::-webkit-scrollbar { width: 6px; }
+  .menu-content::-webkit-scrollbar-thumb { background: rgba(180,200,240,.22); border-radius: 9px; }
+  .page { display: none; }
+  .page.active { display: block; animation: fade .26s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .card { background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 16px; padding: 15px 17px; margin-bottom: 13px; }
+  .card h4 { font-size: 11px; font-weight: 600; letter-spacing: .12em;
+    color: rgba(170,205,255,.85); margin-bottom: 12px; }
+  .card .hint { font-size: 10.5px; line-height: 1.75; color: rgba(190,206,238,.66); margin-top: 10px; }
+  .kv { display: flex; justify-content: space-between; gap: 14px; font-size: 12px;
+    color: rgba(210,225,250,.78); padding: 7px 0; border-bottom: 1px dashed rgba(255,255,255,.08); }
+  .kv:last-child { border-bottom: 0; }
+  .kv span:last-child { color: #d6e6ff; text-align: right; max-width: 64%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .now-row { display: flex; align-items: center; gap: 14px; }
+  .now-cover { position: relative; flex: 0 0 64px; width: 64px; height: 64px; border-radius: 14px;
+    background: linear-gradient(140deg, rgba(140,195,255,.22), rgba(255,150,215,.16));
+    box-shadow: 0 4px 18px rgba(60,110,200,.35), inset 0 0 0 1px rgba(255,255,255,.22);
+    display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .now-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .now-cover #pCoverPh { font-size: 26px; color: rgba(220,235,255,.65); text-shadow: 0 0 14px rgba(150,190,255,.8); }
+  .now-meta { flex: 1; min-width: 0; }
+  .now-title { font-size: 20px; font-weight: 600; color: #fff; letter-spacing: .02em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .now-artist { font-size: 12px; color: rgba(205,222,250,.75); margin-top: 5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .progress { height: 6px; border-radius: 999px; background: rgba(255,255,255,.12);
+    overflow: hidden; margin: 14px 0 6px; }
+  .progress i { display: block; height: 100%; width: 0%;
+    background: linear-gradient(90deg, #8ab6ff, #d7a2ff); box-shadow: 0 0 12px rgba(150,180,255,.6); }
+  .row-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .act { border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.09);
+    color: #f2f6ff; border-radius: 10px; padding: 8px 13px; font-size: 12px; cursor: pointer; }
+  .act:hover { background: rgba(255,255,255,.2); }
+  .act.primary { background: linear-gradient(135deg, rgba(130,180,255,.35), rgba(190,140,255,.3));
+    border-color: rgba(170,200,255,.42); }
+  .act.danger { background: rgba(255,110,130,.14); border-color: rgba(255,130,150,.34); }
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg button { padding: 7px 11px; font-size: 11px; border-radius: 9px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.055); color: rgba(220,232,252,.8); }
+  .seg button:hover { background: rgba(255,255,255,.13); }
+  .seg button.on { color: #fff; background: rgba(130,180,255,.3); border-color: rgba(160,200,255,.55);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.2); }
+  .slider { display: flex; align-items: center; gap: 12px; margin: 11px 0; font-size: 11.5px;
+    color: rgba(215,228,250,.85); }
+  .slider label { flex: 0 0 92px; }
+  .slider input[type=range] { flex: 1; accent-color: #9ec9ff; cursor: pointer; }
+  .slider output { flex: 0 0 46px; text-align: right; color: #bcdcff; font-variant-numeric: tabular-nums; }
+  .switches { display: flex; gap: 16px 24px; flex-wrap: wrap; margin-top: 6px; }
+  .switch { display: flex; align-items: center; gap: 7px; font-size: 11.5px;
+    color: rgba(215,228,250,.86); cursor: pointer; }
+  .switch input { accent-color: #7fd8ff; cursor: pointer; }
+  .tints { display: flex; gap: 12px; align-items: center; }
+  .tint { width: 24px; height: 24px; border-radius: 50%; cursor: pointer;
+    border: 2px solid rgba(255,255,255,.32); }
+  .tint.on { border-color: #fff; box-shadow: 0 0 16px currentColor; }
+  .txt-input { width: 100%; padding: 8px 10px; font-size: 11.5px; border-radius: 9px;
+    border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.06); color: #eaf2ff; }
+  .hotkey { display: flex; justify-content: space-between; font-size: 11.5px; padding: 6px 0;
+    color: rgba(210,225,250,.8); }
+  .hotkey kbd { font-family: inherit; font-size: 10.5px; padding: 3px 8px; border-radius: 6px;
+    background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.16); color: #cfe0ff; }
+  .menu-foot { padding: 9px 22px; border-top: 1px solid rgba(255,255,255,.09);
+    font-size: 10.5px; color: rgba(190,206,238,.6); text-align: center; }
+
+  body[data-layout="center"] .side.left { left: 50%; width: 60vw; text-align: center; transform: translate(-50%,-50%); }
+  body[data-layout="center"] .side.right { display: none; }
+  body[data-layout="left-only"] .side.right { display: none; }
+  body[data-layout="right-only"] .side.left { display: none; }
+  body.frozen .glyph { transition: none; }
+
+  /* ---- auto-fit: scale with the captured game window ---- */
+  body.dimmed .side { opacity: .2; }
+  body[data-compact="1"] .side { width: 25vw; }
+  body[data-compact="1"] .side.left { left: 2.5vw; }
+  body[data-compact="1"] .side.right { right: 2.5vw; }
+  body[data-compact="1"] .main-line { font-size: calc(clamp(16px, 1.9vw, 25px) * var(--font-scale) * var(--ui-scale)); }
+  body[data-compact="1"] .faded { font-size: calc(clamp(11px, 1.1vw, 15px) * var(--ui-scale)); }
+  body[data-compact="1"] .tr-line { font-size: clamp(10px, 1vw, 13px); }
+  body[data-compact="1"] .panel { width: min(760px, 90vw); height: min(500px, 84vh); }
+  /* Declared last so an open menu wins over the dimmed (no game captured) state. */
+  body[data-menu-open="1"] .side { opacity: .12; }
+</style>
+</head>
+<body data-layout="split" data-stroke="1" data-menu-tab="play">
+
+<div class="side left">
+  <div class="side-label">原文 · 逐字 GLYPH</div>
+  <div class="faded above" id="prevLine">&nbsp;</div>
+  <div class="main-line" id="curLine"><div class="glyph-layer" id="curGlyphs"></div></div>
+  <div class="faded below" id="nextLine">&nbsp;</div>
+</div>
+
+<div class="side right">
+  <div class="side-label">翻译 / 状态</div>
+  <div class="tr-line" id="trLine">等待播放…</div>
+  <div class="clock" id="clock">0:00 / 0:00</div>
+</div>
+
+<!-- ======================= liquid-glass main menu ======================= -->
+<div class="panel" id="panel">
+  <div class="menu-head">
+    <div class="brand">
+      <div class="logo">◈</div>
+      <div><b>GlassLyrics</b><small>跨游戏歌词覆盖层 · 主菜单</small></div>
+    </div>
+    <div class="head-right">
+      <span class="chip" id="pPlatform">检测播放器中…</span>
+      <button class="icon-btn" id="menuClose" title="关闭主菜单">✕</button>
+    </div>
+  </div>
+
+  <div class="menu-body">
+    <nav class="menu-nav" id="menuNav">
+      <button data-tab="play" class="active">▶&nbsp; 播放</button>
+      <button data-tab="lyrics">✎&nbsp; 歌词</button>
+      <button data-tab="visual">✦&nbsp; 视觉</button>
+      <button data-tab="window">▣&nbsp; 窗口</button>
+      <button data-tab="general">⚙&nbsp; 通用</button>
+      <button data-tab="about">ⓘ&nbsp; 关于</button>
+    </nav>
+
+    <div class="menu-content">
+      <!-- 播放 -->
+      <section class="page active" data-page="play">
+        <div class="card">
+          <h4>正在播放</h4>
+          <div class="now-row">
+            <div class="now-cover" id="pCoverWrap"><img id="pCover" alt="" hidden onerror="this.hidden=true;document.getElementById('pCoverPh').style.display=''"><span id="pCoverPh">♪</span></div>
+            <div class="now-meta">
+              <div class="now-title" id="pTitle">—</div>
+              <div class="now-artist" id="pArtist">—</div>
+            </div>
+          </div>
+          <div class="progress"><i id="pBar"></i></div>
+          <div class="kv"><span>播放状态 / 进度</span><span><span id="pStatus">—</span> · <span id="pPos">—</span></span></div>
+          <div class="row-btns">
+            <button class="act" data-act="prev">⏮ 上一首</button>
+            <button class="act primary" data-act="toggle">⏯ 播放 / 暂停</button>
+            <button class="act" data-act="next">⏭ 下一首</button>
+          </div>
+          <div class="hint">控制通过 Windows 系统媒体接口（SMTC）发给音乐客户端，不模拟全局按键、不影响游戏输入。QQ 音乐与网易云音乐均原生支持。</div>
+        </div>
+        <div class="card">
+          <h4>当前来源</h4>
+          <div class="kv"><span>播放器</span><span id="pApp">—</span></div>
+          <div class="kv"><span>歌词来源</span><span id="pLyricSrc">演示占位（等待歌词）</span></div>
+          <div class="kv"><span>逐字精度</span><span id="pWordSync">—</span></div>
+        </div>
+      </section>
+
+      <!-- 歌词 -->
+      <section class="page" data-page="lyrics">
+        <div class="card">
+          <h4>歌词源优先级</h4>
+          <div class="seg" id="sourceSeg">
+            <button data-cfg="lyricSource" data-value="auto">自动（跟随播放器）</button>
+            <button data-cfg="lyricSource" data-value="qqmusic">QQ 音乐优先</button>
+            <button data-cfg="lyricSource" data-value="netease">网易云优先</button>
+            <button data-cfg="lyricSource" data-value="lrclib">LRCLIB 优先</button>
+            <button data-cfg="lyricSource" data-value="off">关闭在线歌词</button>
+          </div>
+          <div class="hint">自动模式：QQ 音乐播放 → QQ 音乐歌词；网易云播放 → 网易云歌词（含 YRC 真实逐字）；其它播放器 → LRCLIB。任一源失败会自动降级到下一个，结果缓存在本机。</div>
+        </div>
+        <div class="card">
+          <h4>时间轴</h4>
+          <div class="slider"><label>整体偏移</label>
+            <input type="range" data-cfg="lyricOffsetMs" id="offsetRange" min="-3000" max="3000" step="50" value="0">
+            <output id="offsetOut">0 ms</output></div>
+          <div class="hint">歌词比声音快就把滑块往左拉，慢就往右拉。切歌后仍然生效。</div>
+          <div class="row-btns"><button class="act primary" data-act="refresh">↻ 重新拉取歌词</button></div>
+        </div>
+        <div class="card">
+          <h4>状态</h4>
+          <div class="kv"><span>歌词来源</span><span id="pLyricSrc2">—</span></div>
+          <div class="kv"><span>窗口自适应</span><span id="pFit">等待捕捉…</span></div>
+          <div class="switches" style="margin-top:10px">
+            <label class="switch"><input type="checkbox" data-cfg="showTranslation" id="showTr" checked> 显示翻译（若平台提供）</label>
+          </div>
+        </div>
+      </section>
+
+      <!-- 视觉 -->
+      <section class="page" data-page="visual">
+        <div class="card">
+          <h4>辉光 · 由字形发散</h4>
+          <div class="tints" id="tints">
+            <div class="tint on" data-cfg="glowTint" data-value="white" style="background:#fff;color:#fff" title="白"></div>
+            <div class="tint" data-cfg="glowTint" data-value="pink" style="background:#ff619e;color:#ff619e" title="粉"></div>
+            <div class="tint" data-cfg="glowTint" data-value="blue" style="background:#52a8ff;color:#52a8ff" title="蓝"></div>
+            <div class="tint" data-cfg="glowTint" data-value="amber" style="background:#ffbd4d;color:#ffbd4d" title="琥珀"></div>
+          </div>
+          <div class="slider"><label>辉光强度</label>
+            <input type="range" data-cfg="glowStrength" min="0" max="1" step="0.05" value="0.3">
+            <output data-out="glowStrength">0.30</output></div>
+          <div class="slider"><label>发散半径</label>
+            <input type="range" data-cfg="glowRadius" min="0" max="1" step="0.05" value="0.5">
+            <output data-out="glowRadius">0.50</output></div>
+          <div class="slider"><label>歌词字号</label>
+            <input type="range" data-cfg="fontScale" min="0.75" max="1.4" step="0.05" value="1">
+            <output data-out="fontScale">1.00</output></div>
+          <div class="hint">光晕由每个字自身的 text-shadow 发散，扫光用柔边渐变遮罩，没有任何矩形发光底板。参数按 DangoMusic 的 glowTint / glowStrength / glowRadius 规格设计。</div>
+        </div>
+        <div class="card">
+          <h4>逐字动画</h4>
+          <div class="switches">
+            <label class="switch"><input type="checkbox" data-cfg="wordPop" checked> 逐字弹跳</label>
+            <label class="switch"><input type="checkbox" data-cfg="wiggle" checked> 字摆动（8fps）</label>
+            <label class="switch"><input type="checkbox" data-cfg="slam" checked> 整句砸入</label>
+            <label class="switch"><input type="checkbox" data-cfg="stroke" checked> 黑色描边</label>
+          </div>
+        </div>
+        <div class="card">
+          <h4>布局</h4>
+          <div class="seg" id="layoutSeg">
+            <button data-layout="split" class="on">双侧不挡视野</button>
+            <button data-layout="center">居中</button>
+            <button data-layout="left-only">仅左</button>
+            <button data-layout="right-only">仅右</button>
+          </div>
+          <div class="hint">默认双侧：左侧原文逐字、右侧翻译 / 下一句，中央 30% 视野完全留空。</div>
+        </div>
+      </section>
+
+      <!-- 窗口 -->
+      <section class="page" data-page="window">
+        <div class="card">
+          <h4>自捕捉游戏窗口</h4>
+          <div class="switches">
+            <label class="switch"><input type="checkbox" id="autoFit" data-cfg="autoFit" checked> 自动捕捉游戏窗口</label>
+            <label class="switch"><input type="checkbox" id="hideNoGame" data-cfg="hideWhenNoGame"> 切出游戏时隐藏歌词</label>
+          </div>
+          <div class="kv" style="margin-top:12px"><span>当前跟随状态</span><span id="pFit2">等待捕捉…</span></div>
+          <div class="hint">只读前台窗口的位置和大小（GetForegroundWindow / GetWindowRect），不打开游戏进程、不读内存、不注入。跟随移动、缩放与多显示器，歌词字号和侧栏会按窗口尺寸自适应。</div>
+        </div>
+        <div class="card">
+          <h4>跳过指定程序</h4>
+          <input class="txt-input" id="excludeInput" data-cfg="excludeProcesses" placeholder="例如：Warframe.x64.exe, SomeGame.exe（逗号分隔）">
+          <div class="hint">默认不排除任何程序。若你不想在某个游戏里显示歌词，把它的进程名填进来。</div>
+        </div>
+      </section>
+
+      <!-- 通用 -->
+      <section class="page" data-page="general">
+        <div class="card">
+          <h4>启动与显示器</h4>
+          <div class="switches">
+            <label class="switch"><input type="checkbox" id="autoStart" data-cfg="openAtLogin"> 开机自启</label>
+          </div>
+          <div class="slider"><label>显示器序号</label>
+            <input type="range" data-cfg="displayIndex" min="0" max="3" step="1" value="0">
+            <output data-out="displayIndex">0</output></div>
+          <div class="hint">开机自启是显式开关，不强制、不偷偷添加。多显示器时用序号选择歌词出现哪块屏。</div>
+        </div>
+        <div class="card">
+          <h4>全局热键（被占用时自动回退）</h4>
+          <div class="hotkey"><span>打开 / 收起主菜单</span><kbd>Ctrl + Alt + P</kbd></div>
+          <div class="hotkey"><span>显示 / 隐藏覆盖层</span><kbd>Ctrl + Alt + H</kbd></div>
+          <div class="hotkey"><span>切换歌词布局</span><kbd>Ctrl + Alt + B</kbd></div>
+          <div class="hotkey"><span>开关窗口自适应</span><kbd>Ctrl + Alt + F</kbd></div>
+          <div class="hotkey"><span>退出程序</span><kbd>Ctrl + Shift + Alt + Q</kbd></div>
+        </div>
+        <div class="row-btns"><button class="act danger" id="quitBtn">退出 GlassLyrics</button></div>
+      </section>
+
+      <!-- 关于 -->
+      <section class="page" data-page="about">
+        <div class="card">
+          <h4>关于</h4>
+          <div class="kv"><span>版本</span><span>0.2.0 · 主菜单 / 平台适配</span></div>
+          <div class="kv"><span>技术栈</span><span>Electron + WinRT SMTC + PowerShell</span></div>
+          <div class="kv"><span>歌词源</span><span>QQ 音乐 · 网易云音乐（YRC）· LRCLIB</span></div>
+          <div class="kv"><span>开源协议</span><span>MIT</span></div>
+          <div class="hint">纯置顶透明窗口，不注入任何游戏进程、不读取游戏内存、不模拟按键、不抓取音频、不保存账号或 Cookie。歌词只在运行时从公开接口拉取文本并缓存在你自己的电脑上，仓库和安装包不含任何歌词数据。</div>
+        </div>
+        <div class="card">
+          <h4>隐私与合规</h4>
+          <div class="hint">仅个人使用；请勿分发歌词文本或打包歌曲。带反作弊的联机游戏请自行判断是否使用覆盖层；独占全屏模式下任何普通置顶窗都不可见，需改为无边框全屏。参数参考 DangoMusic（GPL-3.0）时只读取公开的渲染规格描述，未拷贝其代码或着色器。</div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="menu-foot">Ctrl+Alt+P 打开 / 收起主菜单 · Esc 关闭 · 菜单打开时可点击，收起后鼠标穿透直达游戏</div>
+</div>
+
+<script>
+const DEMO_LINES = [
+  { t: '屏幕微光落在窗台', tr: 'A faint glow rests on the sill' },
+  { t: '逐字点亮这一行', tr: 'Lighting up this line, word by word' },
+  { t: '中间留给游戏视野', tr: 'The center stays clear for the game' },
+  { t: '辉光沿字形散开', tr: 'Glow spreads along each glyph' },
+  { t: '时间轴跟住播放进度', tr: 'Timeline follows playback' },
+  { t: '不读取游戏内存', tr: 'No game memory is ever read' },
+  { t: '不注入任何进程', tr: 'No process is ever injected' },
+  { t: '这一帧只属于音乐', tr: 'This frame belongs to the music' }
+];
+let LINES = DEMO_LINES.slice();
+let lyricMode = 'demo';        // 'demo' | 'real'
+let lyricTimes = [];           // line start times, seconds
+let lyricOffsetMs = 0;
+let lyricMeta = null;
+const STEP = 4;
+const STATUS_CN = { PLAYING: '播放中', PAUSED: '已暂停', OPENED: '已打开', STOPPED: '已停止',
+  CLOSED: '已关闭', CHANGING: '切换中', NONE: '无媒体', CONNECTING: '连接中' };
+const PLATFORM_CN = { qqmusic: 'QQ 音乐', netease: '网易云音乐', other: '其它播放器' };
+const TINTS = { white: '255,255,255', pink: '255,97,158', blue: '82,168,255', amber: '255,189,77' };
+const LAYOUTS = ['split', 'center', 'left-only', 'right-only'];
+let state = { title: '—', artist: '—', album: '—', status: 'CONNECTING', position: 0, duration: 0, app: '', recvAt: 0 };
+let lastKey = -1, charStarts = [], charEnds = [], charMode = 'normalized', popAt = [], lineAt = 0, lastWig = -1;
+let demoStart = performance.now(), layoutIdx = 0;
+let cfg = {}, lastFit = null;
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+const label = s => STATUS_CN[s] || s;
+
+function buildCharTimes(text) {
+  const w = [];
+  for (let i = 0; i < text.length; i++) w.push((text[i] === ' ' ? .35 : .65) + (Math.sin(i * 2.31 + .7) + 1) * .38);
+  const sum = w.reduce((a, b) => a + b, 0);
+  const s = [], e = []; let acc = 0;
+  for (const x of w) { s.push(acc / sum); acc += x; e.push(acc / sum); }
+  return { s, e };
+}
+function renderGlyphs(text, words) {
+  const a = $('curGlyphs');
+  a.innerHTML = '';
+  for (const c of text) {
+    const ch = c === ' ' ? '\u00a0' : c;
+    const g = document.createElement('span');
+    g.className = 'glyph'; g.dataset.c = ch; g.textContent = ch;
+    a.appendChild(g);
+  }
+  // Real per-character timestamps from Netease YRC, otherwise spread over the line duration.
+  if (Array.isArray(words) && words.length === [...text].length) {
+    charStarts = words.map(x => x.s); charEnds = words.map(x => x.e); charMode = 'absolute';
+  } else {
+    const t = buildCharTimes(text);
+    charStarts = t.s; charEnds = t.e; charMode = 'normalized';
+  }
+  popAt = new Array(text.length).fill(-1);
+  lineAt = performance.now();
+}
+function popScale(age) {
+  const t = clamp(age / 160, 0, 1), k = 1 - t;
+  return 1 + .28 * k * k + .04 * Math.sin(t * Math.PI) * k - k;
+}
+function hashRand(i, tick) {
+  let h = Math.imul(i, 73856093) ^ Math.imul(tick, 19349663) ^ 83492791 ^ i;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+function indexAtLocal(times, pos) {
+  let lo = 0, hi = times.length - 1, ans = 0;
+  while (lo <= hi) {
+    const m = (lo + hi) >> 1;
+    if (times[m] <= pos) { ans = m; lo = m + 1; } else hi = m - 1;
+  }
+  return ans;
+}
+function renderLine(idx) {
+  const cur = LINES[idx] || LINES[0] || { t: ' ', tr: '' };
+  $('prevLine').textContent = (idx > 0 && LINES[idx - 1]) ? LINES[idx - 1].t : '\u00a0';
+  $('nextLine').textContent = LINES[idx + 1] ? LINES[idx + 1].t : '\u00a0';
+  $('trLine').textContent = cur.tr || '\u00a0';
+  renderGlyphs(cur.t || ' ', cur.words);
+}
+
+window.applyTrack = function (d) {
+  if (!d) return;
+  state = Object.assign({}, state, d, { recvAt: performance.now() });
+  const st = $('status'); if (st) st.textContent = label(state.status);  // legacy hook, HUD removed
+  $('pTitle').textContent = state.title || '—';
+  $('pArtist').textContent = [state.artist, state.album].filter(Boolean).join(' / ') || '—';
+  $('pStatus').textContent = label(state.status);
+  $('pPos').textContent = fmt(state.position) + ' / ' + fmt(state.duration);
+  $('clock').textContent = fmt(state.position) + ' / ' + fmt(state.duration);
+  $('pBar').style.width = (state.duration > 0 ? clamp(state.position / state.duration * 100, 0, 100) : 0) + '%';
+  const p = state.platform || d.platform || 'other';
+  $('pPlatform').textContent = PLATFORM_CN[p] || PLATFORM_CN.other;
+  $('pApp').textContent = state.app || '—';
+  if (d.active === false) setCover(null);   // nothing playing → placeholder
+};
+function setCover(url) {
+  const cov = $('pCover'), ph = $('pCoverPh');
+  if (!cov || !ph) return;
+  if (url) { cov.src = url; cov.hidden = false; ph.style.display = 'none'; }
+  else { cov.hidden = true; ph.style.display = ''; }
+}
+window.setCover = setCover;
+
+/* Replace demo lines with real lyrics. `words` (when present) is the true YRC timeline. */
+window.applyLyrics = function (r) {
+  const src = $('pLyricSrc');
+  const lab = document.querySelector('.side.right .side-label');
+  setCover(r ? r.cover : null);
+  if (!r || !r.ok || !Array.isArray(r.lines) || !r.lines.length) {
+    lyricMode = 'demo'; lyricTimes = []; LINES = DEMO_LINES.slice();
+    lyricMeta = r || null; lastKey = -1;
+    const why = (r && r.error === 'lyrics-disabled') ? '在线歌词已关闭' : '未找到歌词 · 演示占位（点刷新重试）';
+    if (src) src.textContent = why;
+    if ($('pLyricSrc2')) $('pLyricSrc2').textContent = why;
+    if ($('pWordSync')) $('pWordSync').textContent = '演示推算';
+    if (lab) lab.textContent = '翻译 / 状态';
+    return { mode: 'demo', lines: LINES.length, error: (r && r.error) || null };
+  }
+  lyricMode = 'real';
+  lyricTimes = r.lines.map(x => Number(x.time) || 0);
+  LINES = r.lines.map((x, i) => ({
+    t: String(x.text || ''),
+    tr: x.tr || (i + 1 < r.lines.length ? String(r.lines[i + 1].text || '') : ''),
+    words: x.words || null
+  }));
+  lyricOffsetMs = Number(r.offsetMs) || 0;
+  lyricMeta = { ok: true, source: r.source, provider: r.provider, synced: !!r.synced,
+                wordSync: !!r.wordSync, cached: !!r.cached, count: r.lines.length,
+                title: r.title, artist: r.artist, platform: r.platform };
+  lastKey = -1;
+  const provider = r.provider || 'LRCLIB';
+  const timeline = r.synced ? '整行时间轴' : '无时间轴均分';
+  const word = r.wordSync ? '真实逐字' : '逐字为推算';
+  const text = provider + ' · ' + timeline + ' · ' + r.lines.length + ' 行' +
+    (r.cached ? ' · 缓存' : '') + ' · ' + word;
+  if (src) src.textContent = text;
+  if ($('pLyricSrc2')) $('pLyricSrc2').textContent = text;
+  if ($('pWordSync')) $('pWordSync').textContent = r.wordSync
+    ? 'YRC 真实逐字（与播放进度严格同步）' : '按行时长推算（非卡拉 OK 精度）';
+  if (lab) lab.textContent = '下一句 / 状态';
+  return { mode: 'real', lines: LINES.length, source: r.source, wordSync: !!r.wordSync };
+};
+
+window.getLyricState = function () {
+  return { mode: lyricMode, lines: LINES.length, times: lyricTimes.slice(0, 4),
+           offsetMs: lyricOffsetMs, meta: lyricMeta, currentIdx: lastKey,
+           wordSync: !!(lyricMeta && lyricMeta.wordSync), charMode };
+};
+window.setLyricOffset = function (ms) { lyricOffsetMs = Number(ms) || 0; return lyricOffsetMs; };
+
+/* ---------------- main menu ---------------- */
+window.setPanel = function (on) {
+  $('panel').classList.toggle('open', !!on);
+  document.body.dataset.menuOpen = on ? '1' : '0';
+  if (on) setTab(cfg.menuTab || 'play');
+};
+window.getMenuState = function () {
+  return { open: $('panel').classList.contains('open'), tab: document.body.dataset.menuTab,
+           pages: document.querySelectorAll('.page').length,
+           navs: document.querySelectorAll('#menuNav button').length };
+};
+function setTab(name) {
+  document.body.dataset.menuTab = name;
+  document.querySelectorAll('#menuNav button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.dataset.page === name));
+}
+window.setTab = setTab;
+
+window.setVisible = function (on) { document.body.style.display = on ? '' : 'none'; };
+window.getState = function () { return JSON.stringify(state); };
+window.cycleLayout = function () {
+  layoutIdx = (layoutIdx + 1) % LAYOUTS.length;
+  document.body.dataset.layout = LAYOUTS[layoutIdx];
+  syncLayoutButtons();
+  return LAYOUTS[layoutIdx];
+};
+function syncLayoutButtons() {
+  document.querySelectorAll('#layoutSeg button').forEach(b =>
+    b.classList.toggle('on', b.dataset.layout === document.body.dataset.layout));
+}
+
+/* Apply visual config immediately (no need to wait for the IPC round-trip). */
+function applyVisual(c) {
+  const root = document.documentElement;
+  root.style.setProperty('--glow-rgb', TINTS[c.glowTint] || TINTS.white);
+  root.style.setProperty('--glow-strength', c.glowStrength ?? .3);
+  root.style.setProperty('--glow-radius', c.glowRadius ?? .5);
+  root.style.setProperty('--font-scale', c.fontScale ?? 1);
+  document.body.dataset.stroke = c.stroke === false ? '0' : '1';
+  document.querySelectorAll('.tint').forEach(t => t.classList.toggle('on', t.dataset.value === (c.glowTint || 'white')));
+  document.querySelectorAll('#sourceSeg button').forEach(b =>
+    b.classList.toggle('on', b.dataset.value === (c.lyricSource || 'auto')));
+  const off = $('offsetRange');
+  if (off) { off.value = c.lyricOffsetMs ?? 0; }
+  const oo = $('offsetOut');
+  if (oo) oo.textContent = (c.lyricOffsetMs ?? 0) + ' ms';
+  document.querySelectorAll('[data-out]').forEach(o => {
+    const el = document.querySelector('[data-cfg="' + o.dataset.out + '"][type=range]');
+    if (el) o.textContent = Number(el.value).toFixed(2);
+  });
+  if (c.layout && LAYOUTS.includes(c.layout)) {
+    layoutIdx = LAYOUTS.indexOf(c.layout);
+    document.body.dataset.layout = c.layout;
+    syncLayoutButtons();
+  }
+}
+
+window.applyAutoFit = function (d) {
+  if (!d) return null;
+  lastFit = d;
+  const root = document.documentElement;
+  const b = d.bounds || null;
+  const w = b ? b.width : 0, h = b ? b.height : 0;
+  if (w > 0) {
+    root.style.setProperty('--game-w', w + 'px');
+    root.style.setProperty('--game-h', h + 'px');
+    root.style.setProperty('--ui-scale', Math.max(.72, Math.min(1.25, w / 1707)).toFixed(3));
+    document.body.dataset.compact = (w < 1200 || h < 720) ? '1' : '0';
+  }
+  document.body.classList.toggle('dimmed', !d.active && !cfg.hideWhenNoGame && !!b);
+  const txt = d.active ? (b ? b.width + '×' + b.height + ' 跟随中' : '跟随中') : (d.reason || '未启用');
+  const pf = $('pFit'); if (pf) pf.textContent = txt;
+  const pf2 = $('pFit2'); if (pf2) pf2.textContent = txt;
+  return { scale: root.style.getPropertyValue('--ui-scale'), compact: document.body.dataset.compact,
+           state: d.active ? 'captured' : (d.excluded ? 'excluded' : 'idle'),
+           dimmed: document.body.classList.contains('dimmed') };
+};
+window.getFitState = function () { return lastFit; };
+
+window.syncConfig = function (c) {
+  cfg = c || {};
+  document.querySelectorAll('[data-cfg]').forEach(el => {
+    const v = cfg[el.dataset.cfg];
+    if (v === undefined) return;
+    if (el.type === 'checkbox') el.checked = !!v;
+    else if (el.type === 'range' || el.type === 'number') el.value = v;
+    else if (el.tagName === 'BUTTON' || el.classList.contains('tint')) {
+      el.classList.toggle('on', String(el.dataset.value) === String(v));
+    } else if (el.tagName === 'INPUT') el.value = Array.isArray(v) ? v.join(', ') : v;
+  });
+  const a = $('autoStart'); if (a) a.checked = !!cfg.openAtLogin;
+  const f = $('autoFit'); if (f) f.checked = !!cfg.autoFit;
+  const h = $('hideNoGame'); if (h) h.checked = !!cfg.hideWhenNoGame;
+  const tr = $('showTr'); if (tr) tr.checked = cfg.showTranslation !== false;
+  applyVisual(cfg);
+  return cfg;
+};
+
+function tick(now) {
+  const hasTimeline = state.duration > 0;
+  const basePos = hasTimeline
+    ? state.position + clamp((now - state.recvAt) / 1000, 0, 2)
+    : (now - demoStart) / 1000;
+  const pos = Math.max(0, basePos + lyricOffsetMs / 1000);
+  let idx, local;
+  if (lyricMode === 'real' && lyricTimes.length && hasTimeline) {
+    idx = indexAtLocal(lyricTimes, pos);
+    const start = lyricTimes[idx];
+    const end = idx + 1 < lyricTimes.length ? lyricTimes[idx + 1] : start + 4;
+    local = clamp((pos - start) / Math.max(0.2, end - start), 0, 1);
+  } else if (lyricMode === 'real' && lyricTimes.length) {
+    idx = 0; local = 0;
+  } else {
+    idx = Math.floor(basePos / STEP) % LINES.length;
+    local = clamp((basePos % STEP) / STEP, 0, 1);
+  }
+  const key = idx;
+  if (key !== lastKey) { renderLine(idx); lastKey = key; }
+  const g1 = $('curGlyphs').children;
+  const wt = Math.floor(now / 125), doWig = wt !== lastWig;
+  if (doWig) lastWig = wt;
+  for (let i = 0; i < g1.length; i++) {
+    const s = charStarts[i] ?? 0, e = charEnds[i] ?? 1;
+    const p = charMode === 'absolute'
+      ? clamp((pos - s) / Math.max(.03, e - s), 0, 1)
+      : clamp((local - s) / Math.max(.0001, e - s), 0, 1);
+    // -8% keeps the highlight fully hidden before a character starts (no bright leading edge).
+    const pp = p <= 0 ? '-8%' : (p * 100).toFixed(1) + '%';
+    g1[i].style.setProperty('--p', pp);
+    if (p > 0 && popAt[i] < 0) popAt[i] = now;
+    const age = popAt[i] < 0 ? 9999 : now - popAt[i];
+    const pop = (cfg.wordPop === false || age >= 9999) ? 1
+      : (1 + .16 * Math.exp(-age / 90) * (1 - clamp(age / 220, 0, 1)));
+    g1[i].style.setProperty('--pop', pop.toFixed(3));
+    if (doWig && cfg.wiggle !== false) {
+      g1[i].style.setProperty('--wx', ((hashRand(i, wt) - .5) * 1.6).toFixed(2) + 'px');
+      g1[i].style.setProperty('--wy', ((hashRand(i + 977, wt) - .5) * 1.6).toFixed(2) + 'px');
+    }
+  }
+  $('curLine').style.setProperty('--slam', cfg.slam === false ? '1' : popScale(now - lineAt).toFixed(3));
+  requestAnimationFrame(tick);
+}
+renderLine(0);
+requestAnimationFrame(tick);
+
+/* ---------- menu interactions (work in a plain browser too) ---------- */
+document.querySelectorAll('#menuNav button').forEach(b =>
+  b.addEventListener('click', () => {
+    setTab(b.dataset.tab);
+    if (window.glass) window.glass.setConfig({ menuTab: b.dataset.tab });
+  }));
+$('menuClose').addEventListener('click', () => window.setPanel(false));
+
+function writeCfg(key, value) {
+  applyVisual({ ...cfg, [key]: value });
+  if (key === 'lyricOffsetMs') window.setLyricOffset(value);
+  if (window.glass) window.glass.setConfig({ [key]: value });
+  return value;
+}
+document.querySelectorAll('button[data-cfg], .tint[data-cfg]').forEach(el =>
+  el.addEventListener('click', () => writeCfg(el.dataset.cfg, el.dataset.value)));
+document.querySelectorAll('[data-cfg]').forEach(el => {
+  if (el.tagName === 'BUTTON' || el.classList.contains('tint')) return;
+  const evt = (el.type === 'range' || el.type === 'number' || el.tagName === 'INPUT') ? 'input' : 'change';
+  el.addEventListener(evt, () => {
+    let v;
+    if (el.type === 'checkbox') v = el.checked;
+    else if (el.type === 'range' || el.type === 'number') v = Number(el.value);
+    else if (el.id === 'excludeInput') v = el.value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+    else v = el.value;
+    writeCfg(el.dataset.cfg, v);
+    const out = document.querySelector('[data-out="' + el.dataset.cfg + '"]');
+    if (out) out.textContent = Number(el.value).toFixed(2);
+  });
+});
+document.querySelectorAll('#layoutSeg button').forEach(b =>
+  b.addEventListener('click', () => {
+    document.body.dataset.layout = b.dataset.layout;
+    layoutIdx = LAYOUTS.indexOf(b.dataset.layout);
+    syncLayoutButtons();
+    if (window.glass) window.glass.setConfig({ layout: b.dataset.layout });
+  }));
+document.querySelectorAll('.controls [data-act], [data-act]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const a = btn.dataset.act;
+    if (a === 'refresh') { if (window.glass) window.glass.refreshLyrics(); }
+    else if (a === 'layout') {
+      const next = window.cycleLayout();
+      if (window.glass) window.glass.setConfig({ layout: next });
+    } else if (window.glass) window.glass.control(a);
+  });
+});
+$('quitBtn').addEventListener('click', () => { if (window.glass) window.glass.quitApp(); });
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (window.glass) window.glass.closePanel();
+    window.setPanel(false);
+  }
+});
+
+/* ---------- Electron IPC bridge (absent when opened directly in a browser) ---------- */
+if (window.glass) {
+  window.glass.onSmtc(d => window.applyTrack(d));
+  window.glass.onPanel(on => window.setPanel(on));
+  window.glass.onVisible(on => window.setVisible(on));
+  window.glass.onConfig(c => window.syncConfig(c));
+  window.glass.onAutoFit(d => window.applyAutoFit(d));
+  window.glass.onLyrics(r => window.applyLyrics(r));
+  window.glass.onLyricOffset(ms => window.setLyricOffset(ms));
+  window.glass.onCycleLayout(() => {
+    const next = window.cycleLayout();
+    window.glass.setConfig({ layout: next });
+  });
+  window.glass.getConfig().then(c => window.syncConfig(c)).catch(() => {});
+  window.glass.getLyrics().then(r => { if (r) window.applyLyrics(r); }).catch(() => {});
+}
+</script>
+</body>
+</html>

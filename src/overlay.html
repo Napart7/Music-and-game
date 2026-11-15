@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>GlassLyrics Overlay P0</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --text-rgb: 247, 225, 215;
+    --glow-rgb: 255, 255, 255;
+    --glow-strength: .3;
+    --glow-radius: .5;
+  }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+  body { font-family: system-ui, -apple-system, "Microsoft YaHei", "PingFang SC", sans-serif;
+    color: #f2f6ff; -webkit-font-smoothing: antialiased; user-select: none; }
+  .side { position: absolute; top: 50%; transform: translateY(-50%); width: 28vw; pointer-events: none; }
+  .side.left { left: 3.5vw; text-align: left; }
+  .side.right { right: 3.5vw; text-align: right; }
+  .side-label { font-size: 10px; letter-spacing: .22em; color: rgba(160,195,245,.5); margin-bottom: 14px; }
+  .faded { font-size: clamp(14px, 1.3vw, 19px); line-height: 1.8; color: rgba(226,238,255,.34); }
+  .faded.above { margin-bottom: 12px; }
+  .faded.below { margin-top: 14px; }
+  .main-line { position: relative; font-size: clamp(21px, 2.1vw, 33px); font-weight: 600;
+    letter-spacing: .05em; line-height: 1.5; word-break: break-all;
+    transform: scale(var(--slam, 1)); transform-origin: left center; }
+  .side.right .main-line { transform-origin: right center; }
+  .glyph-layer { position: relative; z-index: 2; }
+  .glow-layer { position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    filter: blur(calc(3px + var(--glow-radius) * 16px));
+    opacity: calc(.18 + var(--glow-strength) * .9); mix-blend-mode: screen; }
+  .glyph { position: relative; display: inline-block; color: rgb(var(--text-rgb));
+    -webkit-text-stroke: .5px rgba(0,0,0,.45);
+    transform: translate(var(--wx,0px), var(--wy,0px)) scale(var(--pop,1));
+    transform-origin: center 70%; transition: transform .12s linear; }
+  .glyph::after { content: attr(data-c); position: absolute; left: 0; top: 0; color: #fff;
+    -webkit-text-stroke: 0; white-space: pre; pointer-events: none;
+    text-shadow: 0 0 3px #fff, 0 0 12px rgba(var(--glow-rgb),.95), 0 0 30px rgba(var(--glow-rgb),.6);
+    clip-path: inset(0 calc(100% - var(--p,0%)) 0 0); }
+  .glow-layer .glyph { color: transparent; -webkit-text-stroke: 0; }
+  .glow-layer .glyph::after { color: rgb(var(--glow-rgb)); text-shadow: none; }
+  .tr-line { margin-top: 14px; font-size: clamp(12px, 1.1vw, 16px); color: rgba(206,226,255,.85); }
+  .clock { margin-top: 16px; font-size: 12px; color: rgba(190,210,245,.6); font-variant-numeric: tabular-nums; }
+
+  .hud { position: absolute; top: 18px; right: 24px; padding: 9px 16px; border-radius: 999px;
+    background: rgba(8,10,20,.66); border: 1px solid rgba(255,255,255,.14);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    font-size: 11px; color: rgba(230,240,255,.85); pointer-events: none; }
+  .hud b { font-weight: 550; color: #fff; }
+  .hud .st { color: #7fd8ff; margin-left: 8px; }
+  .panel { position: absolute; left: 50%; bottom: 8vh; transform: translate(-50%, 120%);
+    width: min(560px, 76vw); padding: 20px 22px; border-radius: 22px;
+    background: rgba(12,15,28,.78); border: 1px solid rgba(255,255,255,.16);
+    backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px);
+    transition: transform .35s cubic-bezier(.22,1,.36,1); pointer-events: none; }
+  .panel.open { transform: translate(-50%, 0); }
+  .panel h3 { font-size: 14px; font-weight: 550; margin-bottom: 12px; }
+  .panel .row { display: flex; justify-content: space-between; font-size: 12px;
+    color: rgba(210,225,250,.8); padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.07); }
+  .panel .note { margin-top: 12px; font-size: 11px; line-height: 1.8; color: rgba(190,206,238,.6); }
+  body.frozen .glyph { transition: none; }
+</style>
+</head>
+<body>
+<div class="side left">
+  <div class="side-label">原文 · 逐字 GLYPH</div>
+  <div class="faded above" id="prevLine">&nbsp;</div>
+  <div class="main-line" id="curLine">
+    <div class="glow-layer" id="curGlow" aria-hidden="true"></div>
+    <div class="glyph-layer" id="curGlyphs"></div>
+  </div>
+  <div class="faded below" id="nextLine">&nbsp;</div>
+</div>
+
+<div class="side right">
+  <div class="side-label">翻译 / 状态</div>
+  <div class="tr-line" id="trLine">等待播放…</div>
+  <div class="clock" id="clock">0:00 / 0:00</div>
+</div>
+
+<div class="hud" id="hud"><b>GlassLyrics P0</b><span class="st" id="status">连接中</span></div>
+
+<div class="panel" id="panel">
+  <h3>覆盖层状态</h3>
+  <div class="row"><span>曲目</span><span id="pTitle">—</span></div>
+  <div class="row"><span>艺人 / 专辑</span><span id="pArtist">—</span></div>
+  <div class="row"><span>播放状态</span><span id="pStatus">—</span></div>
+  <div class="row"><span>进度</span><span id="pPos">—</span></div>
+  <div class="row"><span>歌词源</span><span>P0 占位（真实歌词待 P1 接入）</span></div>
+  <div class="note">Ctrl+Alt+P 唤出/收起面板（唤出时可点击，收起后鼠标穿透）。Ctrl+Alt+L 显示/隐藏覆盖层。<br>本窗口为独立置顶窗，不注入任何游戏进程。</div>
+</div>
+
+<script>
+const LINES = [
+  { t: '屏幕微光落在窗台', tr: 'A faint glow rests on the sill' },
+  { t: '逐字点亮这一行', tr: 'Lighting up this line, word by word' },
+  { t: '中间留给游戏视野', tr: 'The center stays clear for the game' },
+  { t: '辉光沿字形散开', tr: 'Glow spreads along each glyph' },
+  { t: '时间轴跟住播放进度', tr: 'Timeline follows playback' },
+  { t: '不读取游戏内存', tr: 'No game memory is ever read' },
+  { t: '不注入任何进程', tr: 'No process is ever injected' },
+  { t: '这一帧只属于音乐', tr: 'This frame belongs to the music' }
+];
+const STEP = 4;
+let state = { title: '—', artist: '—', album: '—', status: 'CONNECTING', position: 0, duration: 0, app: '', recvAt: 0 };
+let lastKey = -1, charStarts = [], charEnds = [], popAt = [], lineAt = 0, lastWig = -1, demoStart = performance.now();
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+
+function buildCharTimes(text) {
+  const w = [];
+  for (let i = 0; i < text.length; i++) w.push((text[i] === ' ' ? .35 : .65) + (Math.sin(i * 2.31 + .7) + 1) * .38);
+  const sum = w.reduce((a, b) => a + b, 0);
+  const s = [], e = []; let acc = 0;
+  for (const x of w) { s.push(acc / sum); acc += x; e.push(acc / sum); }
+  return { s, e };
+}
+function renderGlyphs(text) {
+  const a = $('curGlyphs'), b = $('curGlow');
+  a.innerHTML = ''; b.innerHTML = '';
+  for (const c of text) {
+    const ch = c === ' ' ? '\u00a0' : c;
+    for (const host of [a, b]) {
+      const g = document.createElement('span');
+      g.className = 'glyph'; g.dataset.c = ch; g.textContent = ch;
+      host.appendChild(g);
+    }
+  }
+  const t = buildCharTimes(text);
+  charStarts = t.s; charEnds = t.e;
+  popAt = new Array(text.length).fill(-1);
+  lineAt = performance.now();
+}
+function popScale(age) {
+  const t = clamp(age / 160, 0, 1), k = 1 - t;
+  return 1 + .28 * k * k + .04 * Math.sin(t * Math.PI) * k - k;
+}
+function hashRand(i, tick) {
+  let h = Math.imul(i, 73856093) ^ Math.imul(tick, 19349663) ^ 83492791 ^ i;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+function renderLine(idx) {
+  const cur = LINES[idx];
+  $('prevLine').textContent = idx > 0 ? LINES[idx - 1].t : '\u00a0';
+  $('nextLine').textContent = LINES[(idx + 1) % LINES.length].t;
+  $('trLine').textContent = cur.tr;
+  renderGlyphs(cur.t);
+}
+
+window.applyTrack = function (d) {
+  if (!d) return;
+  state = Object.assign({}, state, d, { recvAt: performance.now() });
+  $('status').textContent = state.status;
+  $('pTitle').textContent = state.title || '—';
+  $('pArtist').textContent = [state.artist, state.album].filter(Boolean).join(' / ') || '—';
+  $('pStatus').textContent = state.status;
+  $('pPos').textContent = fmt(state.position) + ' / ' + fmt(state.duration);
+  $('clock').textContent = fmt(state.position) + ' / ' + fmt(state.duration);
+};
+window.setPanel = function (on) { $('panel').classList.toggle('open', !!on); };
+window.setVisible = function (on) { document.body.style.display = on ? '' : 'none'; };
+window.getState = function () { return JSON.stringify(state); };
+
+function tick(now) {
+  /* PLAYING 时用 SMTC 进度 + 本地插值；暂停时用演示时钟，便于观察逐字动画 */
+  const pos = (state.status === 'PLAYING' && state.duration > 0)
+    ? state.position + clamp((now - state.recvAt) / 1000, 0, 2)
+    : (now - demoStart) / 1000;
+  const idx = Math.floor(pos / STEP) % LINES.length;
+  const local = clamp((pos % STEP) / STEP, 0, 1);
+  const key = idx;
+  if (key !== lastKey) { renderLine(idx); lastKey = key; }
+  const g1 = $('curGlyphs').children, g2 = $('curGlow').children;
+  const wt = Math.floor(now / 125), doWig = wt !== lastWig;
+  if (doWig) lastWig = wt;
+  for (let i = 0; i < g1.length; i++) {
+    const s = charStarts[i] ?? 0, e = charEnds[i] ?? 1;
+    const p = clamp((local - s) / Math.max(.0001, e - s), 0, 1);
+    const pp = (p * 100).toFixed(1) + '%';
+    g1[i].style.setProperty('--p', pp);
+    if (g2[i]) g2[i].style.setProperty('--p', pp);
+    if (p > 0 && popAt[i] < 0) popAt[i] = now;
+    const age = popAt[i] < 0 ? 9999 : now - popAt[i];
+    g1[i].style.setProperty('--pop', age >= 9999 ? '1' : (1 + .16 * Math.exp(-age / 90) * (1 - clamp(age / 220, 0, 1))).toFixed(3));
+    if (doWig) {
+      g1[i].style.setProperty('--wx', ((hashRand(i, wt) - .5) * 1.6).toFixed(2) + 'px');
+      g1[i].style.setProperty('--wy', ((hashRand(i + 977, wt) - .5) * 1.6).toFixed(2) + 'px');
+    }
+  }
+  $('curLine').style.setProperty('--slam', popScale(now - lineAt).toFixed(3));
+  requestAnimationFrame(tick);
+}
+renderLine(0);
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
