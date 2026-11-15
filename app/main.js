@@ -29,6 +29,10 @@ const DEFAULT_HOTKEYS = {
   toggle: 'Control+Alt+H',
   layout: 'Control+Alt+B',
   fit: 'Control+Alt+F',
+  // Bluetooth / wireless audio adds 100-300ms of latency, so lyrics drift out of sync.
+  // Nudging the timeline from a global hotkey beats opening the menu mid-game.
+  offsetEarlier: 'Control+Alt+PageUp',
+  offsetLater: 'Control+Alt+PageDown',
   quit: 'Control+Shift+Alt+Q',
   prev: '',
   next: '',
@@ -379,6 +383,25 @@ function setLayerVisible(on) {
   rebuildTray();
 }
 
+/**
+ * Shift the lyric timeline by `delta` ms from a global hotkey.
+ * Positive delta = lyrics appear earlier; negative = later. Clamped to the same
+ * ±3000ms range as the menu slider so both entry points agree.
+ * Returns the new value (also used by the smoke probe).
+ */
+function nudgeLyricOffset(delta) {
+  const cur = Number(config.lyricOffsetMs) || 0;
+  const next = Math.max(-3000, Math.min(3000, Math.round((cur + delta) / 50) * 50));
+  if (next !== cur) setConfigValue({ lyricOffsetMs: next });
+  const label = `歌词偏移 ${next > 0 ? '+' : ''}${next} ms`;
+  const hint = next === 0 ? '（同步）' : (next > 0 ? '（更早）' : '（更晚）');
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('lyric-offset', next);
+    win.webContents.send('toast', { text: label + hint, key: 'offset' });
+  }
+  return next;
+}
+
 function registerHotkeys() {
   globalShortcut.unregisterAll();
   const handlers = {
@@ -386,6 +409,8 @@ function registerHotkeys() {
     toggle: () => setLayerVisible(!layerVisible),
     layout: () => win && win.webContents.send('cycle-layout'),
     fit: () => setConfigValue({ autoFit: !config.autoFit }),
+    offsetEarlier: () => nudgeLyricOffset(100),
+    offsetLater: () => nudgeLyricOffset(-100),
     quit: () => app.quit(),
     prev: () => runControl('prev'),
     next: () => runControl('next'),
@@ -666,6 +691,17 @@ function maybeSmoke(d) {
         return c ? { hidden: c.hidden, hasSrc: !!c.src && c.src.startsWith('data:image'),
                      srcLen: c.src ? c.src.length : 0 } : null; })(),
       hotkeyRows: document.querySelectorAll('#hkList .hotkey').length,
+      about: (() => {
+        const v = document.getElementById('aboutVer');
+        const p = document.getElementById('aboutPlat');
+        const r = document.getElementById('aboutRecent');
+        return {
+          ver: v ? v.textContent : null,
+          plat: p ? p.textContent : null,
+          recentBlocks: r ? r.querySelectorAll('div').length : 0
+        };
+      })(),
+      toastFn: typeof window.showToast === 'function',
       floatRows: typeof window.getfloatRows === 'function' ? window.getfloatRows() : null,
       writes: { ...(window.__w || {}) },
       click: window.glass ? await window.glass.getClickState() : null,
@@ -845,6 +881,31 @@ function runControl(action) {
 ipcMain.handle('get-config', () => config);
 ipcMain.handle('get-platform', () => currentPlatform);
 ipcMain.handle('get-hotkeys', () => ({ ...hotkeys }));
+
+/** Version + platform + the newest changelog entries, for the in-app About page.
+ *  changelog.json is generated from CHANGELOG.md by tools/gen_changelog.mjs and shipped
+ *  with the app, so the About page never shows a stale hardcoded version again. */
+ipcMain.handle('app-info', () => {
+  const info = {
+    version: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    electron: process.versions.electron,
+    recent: []
+  };
+  try {
+    const raw = fs.readFileSync(path.join(ROOT, 'changelog.json'), 'utf8');
+    const doc = JSON.parse(raw);
+    if (Array.isArray(doc.versions)) {
+      info.recent = doc.versions.slice(0, 3).map((v) => ({
+        version: v.version,
+        date: v.date || '',
+        highlights: (v.highlights || []).slice(0, 4)
+      }));
+    }
+  } catch { /* changelog is optional at runtime */ }
+  return info;
+});
 ipcMain.handle('set-hotkey', (_e, { action, accel }) => setHotkey(action, accel));
 ipcMain.handle('set-config', (_e, patch) => setConfigValue(patch || {}));
 ipcMain.handle('get-lyrics', () => lastLyrics);
@@ -936,6 +997,36 @@ if (!gotLock) {
         try { fs.writeFileSync(target, JSON.stringify(st, null, 2), 'utf8'); } catch (e) { console.error(e); }
         if (process.env.GL_SMOKE === '1') setTimeout(() => app.quit(), 300);
       }, 4500);
+    }
+    // Lyric-offset hotkey path: OS-level key dispatch cannot be synthesised from a
+    // sandboxed test runner, so this exercises everything downstream of it — the nudge,
+    // config persistence, the lyric-offset IPC and the toast text in the renderer —
+    // then restores the user's original offset.
+    if (process.env.GL_TEST_OFFSET === '1') {
+      setTimeout(async () => {
+        const before = Number(config.lyricOffsetMs) || 0;
+        const a = nudgeLyricOffset(100);
+        const b = nudgeLyricOffset(100);
+        const read = async (js) => {
+          try { return await win.webContents.executeJavaScript(js); } catch { return null; }
+        };
+        // The toast IPC and executeJavaScript travel on different channels; give the
+        // last toast a moment to land before reading it back.
+        await new Promise((r) => setTimeout(r, 200));
+        const toastText = await read("document.getElementById('toast').textContent");
+        const toastShown = await read("document.getElementById('toast').classList.contains('show')");
+        const state = { before, step1: a, step2: b, toastText, toastShown, persisted: null, restored: null };
+        try {
+          const onDisk = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+          state.persisted = Number(onDisk.lyricOffsetMs);
+        } catch { /* ignore */ }
+        state.restored = nudgeLyricOffset(before - b);
+        console.log('[offset-test]', JSON.stringify(state));
+        const target = process.env.GL_OFFSET_OUT || path.join(USER_DIR, 'offset-test.json');
+        try { fs.writeFileSync(target, JSON.stringify(state, null, 2), 'utf8'); } catch (e) { console.error(e); }
+        // GL_OFFSET_QUIT lets this run standalone so it never races the smoke probe's quit.
+        if (process.env.GL_OFFSET_QUIT === '1') setTimeout(() => app.quit(), 300);
+      }, 3200);
     }
     // Heartbeat: alt-tab / focus churn can silently drop the click-through flag.
     setInterval(ensureClickThrough, 2000);

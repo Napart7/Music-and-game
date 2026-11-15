@@ -199,7 +199,10 @@ try {
 
   /* ---------------- rebindable hotkeys ---------------- */
   const hkCount = await ev("document.querySelectorAll('#hkList .hotkey').length");
-  check('热键列表渲染 8 个动作', hkCount === 8, `rows=${hkCount}`);
+  const hkLabels = await ev("document.querySelectorAll('#hkList .hotkey span').length");
+  check('热键列表渲染 10 个动作', hkCount === 10 && hkLabels === 10, `rows=${hkCount}`);
+  const hkOffset = await ev("(document.querySelector('#hkList [data-hk=offsetEarlier]')||{}).textContent + '|' + (document.querySelector('#hkList [data-hk=offsetLater]')||{}).textContent");
+  check('偏移微调热键已列出', /PageUp/.test(hkOffset) && /PageDown/.test(hkOffset), hkOffset);
   await ev("window.applyHotkey('panel', 'Control+Alt+K')");
   const hk1 = await ev("document.querySelector('#hkList [data-hk=panel]').textContent");
   check('热键重绑定生效', /Control \+ Alt \+ K/.test(hk1), hk1);
@@ -276,6 +279,36 @@ try {
   check('低配模式帧率限到 ~30', fps > 18 && fps < 42, 'frames/s=' + fps);
   await ev("(() => { const c=document.querySelector('[data-cfg=perfLow]'); c.checked=false; c.dispatchEvent(new Event('input')); })()");
   await ev("(() => { const c=document.querySelector('[data-cfg=wiggle]'); c.checked=true; c.dispatchEvent(new Event('input')); })()");
+
+  /* ---------------- v1.4: toast feedback + in-app changelog ---------------- */
+  const toast = await ev(`(() => {
+    window.showToast('歌词偏移 +100 ms（更早）');
+    const el = document.getElementById('toast');
+    return { text: el.textContent, shown: el.classList.contains('show'),
+             textContent: getComputedStyle(el).textContent };
+  })()`);
+  check('Toast 能显示提示文案', toast.shown && toast.text.indexOf('+100 ms') >= 0, JSON.stringify(toast));
+
+  const toastHidden = await ev(`(async () => {
+    await new Promise(r => setTimeout(r, 1900));
+    return document.getElementById('toast').classList.contains('show');
+  })()`);
+  check('Toast 1.7s 后自动消失', toastHidden === false);
+
+  // A plain browser has no preload bridge, so feed renderAppInfo the exact shape main
+  // sends (the real IPC path is covered by the Electron smoke run).
+  const about = await ev(`(() => {
+    renderAppInfo({ version: '9.9.9', platform: 'linux', arch: 'x64', electron: '45.0.0',
+      recent: [{ version: '9.9.9', date: '2026-11-15', highlights: ['测试要点甲'] },
+               { version: '9.9.8', date: '2026-11-14', highlights: ['测试要点乙'] }] });
+    return { ver: document.getElementById('aboutVer').textContent,
+             plat: document.getElementById('aboutPlat').textContent,
+             blocks: document.querySelectorAll('#aboutRecent div').length,
+             html: document.getElementById('aboutRecent').innerHTML };
+  })()`);
+  check('关于页渲染版本与平台', about.ver === 'v9.9.9' && about.plat.indexOf('Linux') === 0, JSON.stringify(about));
+  check('关于页渲染最近更新条目',
+        about.blocks === 2 && about.html.indexOf('测试要点甲') >= 0, JSON.stringify({ blocks: about.blocks }));
 
   check('运行期无 JS 异常', errors.length === 0, errors.join(' | ') || 'none');
 } catch (e) {

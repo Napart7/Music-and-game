@@ -269,9 +269,28 @@
     backdrop-filter: blur(18px); font-size: 12px; color: #dceaff;
     box-shadow: 0 8px 30px rgba(0,0,0,.4); }
   body[data-edit="1"] #editBar { display: flex; }
+
+  /* Transient feedback for global hotkeys (e.g. lyric offset nudging). Purely visual:
+     pointer-events:none keeps the overlay click-through, and it never runs an animation
+     loop — a single opacity transition handled by the compositor. */
+  #toast {
+    position: fixed; left: 50%; bottom: 9vh; transform: translateX(-50%) translateY(10px);
+    padding: 11px 22px; border-radius: 999px; z-index: 900;
+    background: rgba(16,23,38,.78); border: 1px solid rgba(150,190,255,.28);
+    color: #eaf3ff; font-size: clamp(13px, 1.1vw, 16px); font-weight: 600;
+    letter-spacing: .02em; white-space: nowrap; pointer-events: none;
+    box-shadow: 0 10px 34px rgba(0,0,0,.45);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    opacity: 0; transition: opacity .18s ease, transform .18s ease;
+    will-change: opacity, transform;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  body[data-menu-open="1"] #toast { opacity: 0; }   /* the panel covers this area anyway */
 </style>
 </head>
 <body data-layout="split" data-stroke="1" data-menu-tab="play">
+
+<div id="toast" role="status" aria-live="polite"></div>
 
 <div class="side left">
   <div class="side-label">原文 · 逐字 GLYPH</div>
@@ -516,12 +535,18 @@
       <section class="page" data-page="about">
         <div class="card">
           <h4>关于</h4>
-          <div class="kv"><span>版本</span><span>1.0.0 · 六平台适配</span></div>
-          <div class="kv"><span>技术栈</span><span>Electron + WinRT SMTC + Node</span></div>
-          <div class="kv"><span>歌词源</span><span>QQ · 网易云(YRC) · 酷狗 · LRCLIB</span></div>
+          <div class="kv"><span>版本</span><span id="aboutVer">—</span></div>
+          <div class="kv"><span>运行平台</span><span id="aboutPlat">—</span></div>
+          <div class="kv"><span>技术栈</span><span>Electron + 系统媒体接口（SMTC / AppleScript / MPRIS）</span></div>
+          <div class="kv"><span>歌词源</span><span>QQ · 网易云(YRC) · 酷狗 · LRCLIB · iTunes 元数据</span></div>
           <div class="kv"><span>播放器适配</span><span>QQ / 网易云 / 酷狗 / 汽水 / Apple Music / Spotify</span></div>
           <div class="kv"><span>开源协议</span><span>MIT</span></div>
           <div class="hint">纯置顶透明窗口，不注入任何游戏进程、不读取游戏内存、不模拟按键、不抓取音频、不保存账号或 Cookie。歌词只在运行时从公开接口拉取文本并缓存在你自己的电脑上，仓库和安装包不含任何歌词数据。</div>
+        </div>
+        <div class="card">
+          <h4>最近更新</h4>
+          <div id="aboutRecent" class="hint">加载中…</div>
+          <div class="hint">完整版本历史见仓库根目录 <b>CHANGELOG.md</b>，功能清单见 <b>docs/更新说明-v1.4.md</b>。</div>
         </div>
         <div class="card">
           <h4>隐私与合规</h4>
@@ -789,6 +814,36 @@ function resetLyricPos() {
 }
 window.resetLyricPos = resetLyricPos;
 
+let toastTimer = 0;
+/* Transient on-screen feedback (global hotkeys). No rAF loop: one CSS transition only. */
+window.showToast = function (text, ms) {
+  const el = $('toast');
+  if (!el || !text) return;
+  el.textContent = String(text);
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), ms || 1700);
+};
+
+/* About page: real version / platform (from app.getVersion()) + newest changelog entries. */
+function renderAppInfo(info) {
+  if (!info) return;
+  const plat = ({ win32: 'Windows', darwin: 'macOS', linux: 'Linux' })[info.platform] || info.platform || '—';
+  setText('aboutVer', 'v' + (info.version || '—'));
+  setText('aboutPlat', [plat, info.arch, info.electron ? 'Electron ' + info.electron : '']
+    .filter(Boolean).join(' · '));
+  const box = $('aboutRecent');
+  if (!box) return;
+  const list = Array.isArray(info.recent) ? info.recent : [];
+  if (!list.length) { box.textContent = '暂无更新记录'; return; }
+  box.innerHTML = list.map((v) => {
+    const items = (v.highlights || []).map((h) => '· ' + escapeHtml(h)).join('<br>');
+    return `<div style="margin-bottom:10px"><b>v${escapeHtml(v.version)}</b>` +
+      (v.date ? ` <span style="opacity:.55">${escapeHtml(v.date)}</span>` : '') +
+      `<br>${items}</div>`;
+  }).join('');
+}
+
 /* Replace demo lines with real lyrics. `words` (when present) is the true YRC timeline. */
 window.showLyricsLoading = function (d) {
   const txt = '正在加载歌词…' + (d && d.title ? '（' + d.title + '）' : '');
@@ -1042,9 +1097,11 @@ requestAnimationFrame(tick);
 
 /* ---------------- user-rebindable global hotkeys ---------------- */
 const HK_DEFAULTS = { panel:'Control+Alt+P', toggle:'Control+Alt+H', layout:'Control+Alt+B',
-  fit:'Control+Alt+F', quit:'Control+Shift+Alt+Q', prev:'', next:'', playpause:'' };
+  fit:'Control+Alt+F', offsetEarlier:'Control+Alt+PageUp', offsetLater:'Control+Alt+PageDown',
+  quit:'Control+Shift+Alt+Q', prev:'', next:'', playpause:'' };
 const HK_LABELS = { panel:'打开 / 收起主菜单', toggle:'显示 / 隐藏覆盖层', layout:'切换歌词布局',
-  fit:'开关窗口自适应', quit:'退出程序', prev:'上一首（全局）', next:'下一首（全局）', playpause:'播放 / 暂停（全局）' };
+  fit:'开关窗口自适应', offsetEarlier:'歌词提前 0.1 秒（蓝牙延迟）', offsetLater:'歌词延后 0.1 秒',
+  quit:'退出程序', prev:'上一首（全局）', next:'下一首（全局）', playpause:'播放 / 暂停（全局）' };
 let hkCapturing = null;
 window.__hkFailed = {};
 
@@ -1271,6 +1328,8 @@ if (window.glass) {
   window.glass.onLyrics(r => window.applyLyrics(r));
   window.glass.onLyricsLoading(d => window.showLyricsLoading(d));
   window.glass.onLyricOffset(ms => window.setLyricOffset(ms));
+  window.glass.onToast(d => window.showToast(d && d.text));
+  window.glass.getAppInfo().then(renderAppInfo).catch(() => {});
   window.glass.onEditMode(on => window.setEditMode(on));
   window.glass.onCycleLayout(() => {
     const next = window.cycleLayout();

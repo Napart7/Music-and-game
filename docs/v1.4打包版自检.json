@@ -1,0 +1,218 @@
+{
+  "ok": true,
+  "at": "2026-11-15T09:33:13.719Z",
+  "electron": "45.3.2",
+  "packaged": true,
+  "hotkeys": {
+    "panel": "Control+Alt+P",
+    "toggle": "Control+Alt+H",
+    "layout": "Control+Alt+B",
+    "fit": "FAILED",
+    "offsetEarlier": "Control+Alt+PageUp",
+    "offsetLater": "Control+Alt+PageDown",
+    "quit": "Control+Shift+Alt+Q",
+    "prev": "",
+    "next": "",
+    "playpause": ""
+  },
+  "config": {
+    "openAtLogin": true,
+    "displayIndex": 0,
+    "layout": "left-only",
+    "glowTint": "blue",
+    "glowStrength": 0.3,
+    "glowRadius": 0.5,
+    "wordPop": true,
+    "wiggle": false,
+    "slam": true,
+    "stroke": true,
+    "showGuides": false,
+    "fontScale": 1,
+    "showTranslation": true,
+    "menuTab": "lyrics",
+    "hotkeys": {
+      "panel": "Control+Alt+P",
+      "toggle": "Control+Alt+H",
+      "layout": "Control+Alt+B",
+      "fit": "Control+Alt+F",
+      "quit": "Control+Shift+Alt+Q",
+      "prev": "",
+      "next": "",
+      "playpause": ""
+    },
+    "lyricPos": {
+      "left": {
+        "x": 0.23,
+        "y": 66.21
+      },
+      "right": null
+    },
+    "sideWidth": 23,
+    "lineHeight": 1.25,
+    "fontWeight": 600,
+    "lyricOpacity": 1,
+    "floatLines": 3,
+    "floatDrift": true,
+    "perfLow": false,
+    "autoFit": true,
+    "hideWhenNoGame": true,
+    "excludeProcesses": [],
+    "minWindowWidth": 640,
+    "minWindowHeight": 400,
+    "lyricSource": "off",
+    "lyricOffsetMs": 0,
+    "spotifyClientId": "",
+    "spotifyClientSecret": ""
+  },
+  "smtc": {
+    "ok": true,
+    "active": true,
+    "app": "Tencent.QQMusic",
+    "title": "晴天",
+    "artist": "周杰伦",
+    "album": "",
+    "status": "PLAYING",
+    "statusValue": 3,
+    "position": 12,
+    "duration": 269,
+    "hasCover": true,
+    "cover": null,
+    "coverChanged": false,
+    "platformId": ""
+  },
+  "dom": {
+    "title": "晴天",
+    "status": "播放中",
+    "glyphs": 6,
+    "panel": "panel",
+    "menuTab": "play",
+    "platform": "QQ 音乐",
+    "cover": {
+      "hidden": false,
+      "hasSrc": false,
+      "srcLen": 86
+    },
+    "hotkeyRows": 10,
+    "about": {
+      "ver": "v1.4.0",
+      "plat": "Windows · x64 · Electron 45.3.2",
+      "recentBlocks": 3
+    },
+    "toastFn": true,
+    "floatRows": {
+      "left": 3,
+      "right": 3,
+      "drift": "drift"
+    },
+    "writes": {
+      "p": 22,
+      "pop": 6,
+      "wx": 0,
+      "wy": 0,
+      "slam": 17,
+      "frames": 17
+    },
+    "click": {
+      "clickThrough": true,
+      "panelOpen": false,
+      "editMode": false
+    },
+    "pickPage": 1,
+    "pickSearch": "ok:15",
+    "pickKugou": "ok:15",
+    "pickApple": "ok:13",
+    "fitState": {
+      "active": false,
+      "reason": "non-game-app",
+      "excluded": false,
+      "ratio": null,
+      "process": "msedge",
+      "title": "新建标签页 和另外 3 个页面 - 个人 - Microsoft​ Edge",
+      "className": "Chrome_WidgetWin_1",
+      "rect": [
+        269,
+        41,
+        1411,
+        971
+      ],
+      "bounds": null,
+      "scale": 1.5
+    },
+    "lyricSrc": "网易云音乐 · 整行时间轴 · 50 行 · 缓存 · 逐字为推算",
+    "lyricState": {
+      "mode": "real",
+      "lines": 50,
+      "times": [
+        14.46,
+        17.91,
+        21.42,
+        24.81
+      ],
+      "offsetMs": 0,
+      "meta": {
+        "ok": true,
+        "source": "netease-lrc",
+        "provider": "网易云音乐",
+        "synced": true,
+        "wordSync": false,
+        "cached": true,
+        "count": 50,
+        "title": "晴天",
+        "artist": "JustForFun",
+        "platform": "qqmusic"
+      },
+      "currentIdx": 0,
+      "wordSync": false,
+      "charMode": "normalized"
+    },
+    "glow": {
+      "shadow": "rgba(82, 168, 255, 0.26) 0px 0px 2px, rgba(82, 168, 255, 0.494) 0px 0px 8px, rgba(82, 168, 255, 0.3) 0px 0px 26px, rgba(82, 168, 255, 0.145) 0px 0px 59px",
+      "hasBox": "none",
+      "afterMask": "linear-gradient(90deg, rgb(0, 0, 0) 0%, rgb(0, 0, 0) -8%, rgba(0, 0, 0, 0) -1%)"
+    }
+  },
+  "autoFit": {
+    "active": false,
+    "reason": "non-game-app",
+    "excluded": false,
+    "ratio": null,
+    "process": "msedge",
+    "title": "新建标签页 和另外 3 个页面 - 个人 - Microsoft​ Edge",
+    "className": "Chrome_WidgetWin_1",
+    "rect": [
+      269,
+      41,
+      1411,
+      971
+    ],
+    "bounds": null,
+    "scale": 1.5
+  },
+  "windowProbe": {
+    "rect": [
+      263,
+      41,
+      1423,
+      977
+    ],
+    "rectPhysical": [
+      404,
+      62,
+      2117,
+      1457
+    ],
+    "title": "新建标签页 和另外 3 个页面 - 个人 - Microsoft​ Edge",
+    "className": "Chrome_WidgetWin_1"
+  },
+  "lyrics": {
+    "ok": true,
+    "source": "netease-lrc",
+    "provider": "网易云音乐",
+    "wordSync": false,
+    "lines": 50,
+    "synced": true,
+    "cached": true,
+    "elapsedMs": 0,
+    "error": null
+  }
+}

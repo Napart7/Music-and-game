@@ -1,0 +1,9 @@
+{
+  "before": 0,
+  "step1": 100,
+  "step2": 200,
+  "toastText": "歌词偏移 +200 ms（更早）",
+  "toastShown": true,
+  "persisted": 200,
+  "restored": 0
+}

@@ -14,6 +14,7 @@ const bad = (name, detail) => { failures.push(name + (detail ? ' :: ' + detail :
 const required = [
   'README.md', 'LICENSE', 'docs/技术方案.md', 'docs/使用说明.md', 'docs/第三方声明.md',
   'docs/平台适配.md', 'docs/跨平台适配.md', 'docs/自检报告-v1.2.md', 'docs/性能自检-v1.3.md',
+  'docs/更新说明-v1.4.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'app/changelog.json',
   'app/main.js', 'app/preload.js', 'app/lyrics.js', 'app/providers.js',
   'app/backends/index.js', 'app/backends/parse.js',
   'app/backends/media-mac.js', 'app/backends/control-mac.js', 'app/backends/window-mac.js',
@@ -54,6 +55,14 @@ for (const f of jsFiles) {
   bad('语法错误 ' + path.relative(ROOT, f), (r.stderr || '').split('\n')[0]);
 }
 ok(`JS 语法检查完成（${jsFiles.length} 个文件）`);
+
+/* 3b) app/changelog.json must match CHANGELOG.md (the About page reads it) */
+{
+  const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'gen_changelog.mjs'), '--check'],
+    { encoding: 'utf8' });
+  if (r.status === 0) ok('CHANGELOG 与 app/changelog.json 同步');
+  else bad('CHANGELOG 未同步', (r.stderr || r.stdout || '').trim().split('\n')[0]);
+}
 
 /* 4) POSIX scripts must be LF and start with a shebang */
 for (const f of files.filter((x) => x.endsWith('.sh'))) {

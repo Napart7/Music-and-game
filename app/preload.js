@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('glass', {
   onLyrics: (cb) => ipcRenderer.on('lyrics', (_e, d) => cb(d)),
   onLyricsLoading: (cb) => ipcRenderer.on('lyrics-loading', (_e, d) => cb(d)),
   onLyricOffset: (cb) => ipcRenderer.on('lyric-offset', (_e, v) => cb(v)),
+  onToast: (cb) => ipcRenderer.on('toast', (_e, d) => cb(d)),
+  getAppInfo: () => ipcRenderer.invoke('app-info'),
   refreshLyrics: () => ipcRenderer.send('refresh-lyrics'),
   getLyrics: () => ipcRenderer.invoke('get-lyrics'),
   searchSongs: (query, platform) => ipcRenderer.invoke('search-songs', { query, platform }),
