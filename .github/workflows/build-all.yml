@@ -33,10 +33,16 @@ jobs:
           node tools/verify_providers.mjs
           node tools/verify_lyrics.mjs
       - name: UI regressions (headless Edge)
+        shell: bash
         run: |
-          node tools/verify_menu.mjs
-          node tools/verify_autofit.mjs
-          node tools/verify_preview.mjs
+          # A cold runner occasionally starts the browser slower than the CDP budget.
+          # One retry per suite keeps a flaky browser launch from failing a release.
+          for suite in menu autofit preview; do
+            node "tools/verify_${suite}.mjs" && continue
+            echo "::warning::verify_${suite} failed, retrying once"
+            sleep 5
+            node "tools/verify_${suite}.mjs"
+          done
 
   # Same UI regressions on Linux: proves the renderer (layout / fonts / animations)
   # behaves identically off Windows. Uses the preinstalled Chrome via tools/cdp-env.mjs.
@@ -56,9 +62,14 @@ jobs:
           node tools/verify_backends.mjs
       - name: UI regressions on Linux
         run: |
-          node tools/verify_menu.mjs
-          node tools/verify_autofit.mjs
-          node tools/verify_preview.mjs
+          # Same retry policy as Windows: the first headless launch on a fresh runner is
+          # the slowest one and has been seen to miss the CDP window.
+          for suite in menu autofit preview; do
+            node "tools/verify_${suite}.mjs" && continue
+            echo "::warning::verify_${suite} failed, retrying once"
+            sleep 5
+            node "tools/verify_${suite}.mjs"
+          done
 
   build:
     needs: [verify, verify-linux]
