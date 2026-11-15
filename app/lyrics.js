@@ -131,6 +131,7 @@ function indexAt(lines, pos) {
 
 module.exports = {
   fetchLyrics, resolveOrder, platformFromApp, indexAt, trackKey,
+  searchSongs: P.searchSongs,
   // re-exported for the regression suite / renderer utilities
   parseLrc: P.parseLrc,
   parseYrc: P.parseYrc,

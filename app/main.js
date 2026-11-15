@@ -4,7 +4,8 @@
 //  - transparent always-on-top window; NEVER injects into a game process, never reads game memory
 //  - mouse click-through is ON by default; only the global hotkey turns it off to use the panel
 //  - media info comes from Windows SMTC through a PowerShell bridge (no audio capture, no account)
-const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, screen, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, screen, nativeImage,
+        clipboard, shell } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -15,6 +16,20 @@ const RES = app.isPackaged ? process.resourcesPath : ROOT;
 const USER_DIR = app.getPath('userData');
 const CONFIG_FILE = path.join(USER_DIR, 'config.json');
 const TITLE = 'GlassLyricsOverlay';
+
+// Default global hotkeys. Users can rebind every action in the menu (general page).
+// Playback-control hotkeys are EMPTY by default so they never fight a game's own keys.
+const DEFAULT_HOTKEYS = {
+  panel: 'Control+Alt+P',
+  toggle: 'Control+Alt+H',
+  layout: 'Control+Alt+B',
+  fit: 'Control+Alt+F',
+  quit: 'Control+Shift+Alt+Q',
+  prev: '',
+  next: '',
+  playpause: ''
+};
+const HOTKEY_ACTIONS = Object.keys(DEFAULT_HOTKEYS);
 
 const DEFAULTS = {
   openAtLogin: false,
@@ -31,6 +46,14 @@ const DEFAULTS = {
   fontScale: 1,
   showTranslation: true,
   menuTab: 'play',
+  hotkeys: { ...DEFAULT_HOTKEYS },
+  // --- free lyric placement (percent of window; null = layout default) ---
+  // x is the left margin for the left side, right margin for the right side; y is top.
+  lyricPos: { left: null, right: null },   // {x,y} in %, set by drag edit mode
+  sideWidth: 28,          // vw
+  lineHeight: 1.5,
+  fontWeight: 600,
+  lyricOpacity: 1,
   // --- auto-fit: follow the foreground game window ---
   autoFit: true,
   hideWhenNoGame: false,
@@ -74,6 +97,7 @@ let tray = null;
 let bridge = null;
 let windowProbe = null;
 let panelOpen = false;
+let editMode = false;   // drag-to-place lyrics: layer becomes clickable, panel auto-closes
 let layerVisible = true;
 let loaded = false;
 let smokeDone = false;
@@ -226,10 +250,19 @@ function createWindow() {
 function setPanel(on) {
   panelOpen = !!on;
   if (!win || win.isDestroyed()) return;
-  win.setIgnoreMouseEvents(!panelOpen, { forward: true });
-  win.setFocusable(panelOpen);
+  win.setIgnoreMouseEvents(!(panelOpen || editMode), { forward: true });
+  win.setFocusable(panelOpen || editMode);
   win.webContents.send('panel', panelOpen);
   rebuildTray();
+}
+
+function setEditMode(on) {
+  editMode = !!on;
+  if (!win || win.isDestroyed()) return;
+  if (editMode && panelOpen) setPanel(false);   // lyrics must be visible & draggable
+  win.setIgnoreMouseEvents(!(editMode || panelOpen), { forward: true });
+  win.setFocusable(editMode || panelOpen);
+  win.webContents.send('edit-mode', editMode);
 }
 
 function setLayerVisible(on) {
@@ -245,30 +278,42 @@ function setLayerVisible(on) {
 }
 
 function registerHotkeys() {
-  const groups = {
-    panel: ['Control+Alt+P', 'Control+Alt+O', 'Control+Shift+Alt+P'],
-    toggle: ['Control+Alt+H', 'Control+Alt+L', 'Control+Shift+Alt+H'],
-    layout: ['Control+Alt+B', 'Control+Shift+Alt+B'],
-    fit: ['Control+Alt+F', 'Control+Shift+Alt+F'],
-    quit: ['Control+Alt+Q', 'Control+Shift+Alt+Q']
-  };
+  globalShortcut.unregisterAll();
   const handlers = {
     panel: () => setPanel(!panelOpen),
     toggle: () => setLayerVisible(!layerVisible),
     layout: () => win && win.webContents.send('cycle-layout'),
     fit: () => setConfigValue({ autoFit: !config.autoFit }),
-    quit: () => app.quit()
+    quit: () => app.quit(),
+    prev: () => runControl('prev'),
+    next: () => runControl('next'),
+    playpause: () => runControl('toggle')
   };
-  for (const [name, candidates] of Object.entries(groups)) {
-    let picked = 'FAILED';
-    for (const key of candidates) {
+  const userKeys = { ...DEFAULT_HOTKEYS, ...((config.hotkeys) || {}) };
+  for (const [name, handler] of Object.entries(handlers)) {
+    const accel = userKeys[name];
+    let picked = '';
+    if (accel) {
+      picked = 'FAILED';
       try {
-        if (globalShortcut.register(key, handlers[name])) { picked = key; break; }
-      } catch { /* occupied, try next */ }
+        if (globalShortcut.register(accel, handler)) picked = accel;
+      } catch { /* occupied or malformed */ }
     }
     hotkeys[name] = picked;
   }
   console.log('[hotkeys]', JSON.stringify(hotkeys));
+}
+
+/** Rebind one hotkey. Returns {ok, registered} so the UI can flag conflicts. */
+function setHotkey(action, accel) {
+  if (!HOTKEY_ACTIONS.includes(action)) return { ok: false, reason: 'unknown-action' };
+  const clean = String(accel || '').trim();
+  config.hotkeys = { ...DEFAULT_HOTKEYS, ...(config.hotkeys || {}), [action]: clean };
+  saveConfig();
+  registerHotkeys();
+  const registered = hotkeys[action];
+  if (win && !win.isDestroyed()) win.webContents.send('config', config);
+  return { ok: !clean || registered === clean, registered, hotkeys: { ...hotkeys } };
 }
 
 function rebuildTray() {
@@ -481,7 +526,8 @@ function maybeSmoke(d) {
   // report carries real auto-fit state instead of "waiting".
   setTimeout(() => {
     if (!win || win.isDestroyed()) return;
-    const probe = `({
+    // Async IIFE: the pick-search check goes through the real preload IPC bridge.
+    const probe = `(async () => ({
       title: document.getElementById('pTitle').textContent,
       status: document.getElementById('pStatus').textContent,
       glyphs: document.querySelectorAll('#curGlyphs .glyph').length,
@@ -491,6 +537,13 @@ function maybeSmoke(d) {
       cover: (() => { const c = document.getElementById('pCover');
         return c ? { hidden: c.hidden, hasSrc: !!c.src && c.src.startsWith('data:image'),
                      srcLen: c.src ? c.src.length : 0 } : null; })(),
+      hotkeyRows: document.querySelectorAll('#hkList .hotkey').length,
+      pickPage: document.querySelectorAll('.page[data-page=pick]').length,
+      pickSearch: window.glass
+        ? await window.glass.searchSongs('孤勇者', 'qqmusic')
+            .then((r) => (r && r.ok) ? ('ok:' + r.list.length) : ('err:' + (r && r.error)))
+            .catch((e) => 'ex:' + e.message)
+        : 'no-bridge',
       fitState: typeof window.getFitState === 'function' ? window.getFitState() : null,
       lyricSrc: document.getElementById('pLyricSrc').textContent,
       lyricState: typeof window.getLyricState === 'function' ? window.getLyricState() : null,
@@ -498,7 +551,7 @@ function maybeSmoke(d) {
         return g ? { shadow: getComputedStyle(g).textShadow,
                      hasBox: getComputedStyle(g).boxShadow,
                      afterMask: getComputedStyle(g, '::after').webkitMaskImage || getComputedStyle(g, '::after').maskImage } : null; })()
-    })`;
+    }))()`;
     win.webContents.executeJavaScript(probe).then((dom) => {
       const out = {
         ok: true, at: new Date().toISOString(), electron: process.versions.electron,
@@ -618,11 +671,39 @@ function runControl(action) {
 
 ipcMain.handle('get-config', () => config);
 ipcMain.handle('get-platform', () => currentPlatform);
+ipcMain.handle('get-hotkeys', () => ({ ...hotkeys }));
+ipcMain.handle('set-hotkey', (_e, { action, accel }) => setHotkey(action, accel));
 ipcMain.handle('set-config', (_e, patch) => setConfigValue(patch || {}));
 ipcMain.handle('get-lyrics', () => lastLyrics);
+// Pick page: text search on the public platform APIs, no account required.
+ipcMain.handle('search-songs', async (_e, { query, platform }) => {
+  try {
+    const list = await lyricsEngine.searchSongs(query, platform === 'netease' ? 'netease' : 'qqmusic');
+    return { ok: true, list };
+  } catch (e) { return { ok: false, error: e.message, list: [] }; }
+});
+// There is no public "play this exact song" API. We try the client's own URL scheme to
+// open its search page, and ALWAYS copy the song name so the user can paste it manually.
+ipcMain.handle('play-song', async (_e, song) => {
+  const text = `${song.title || ''} ${song.artist || ''}`.trim();
+  if (!text) return { ok: false };
+  clipboard.writeText(text);
+  let deepLink = false;
+  try {
+    if (song.platform === 'netease') {
+      await shell.openExternal('orpheus://search?q=' + encodeURIComponent(text));
+      deepLink = true;
+    } else {
+      await shell.openExternal('qqmusic://qq.com/ui/search?w=' + encodeURIComponent(text));
+      deepLink = true;
+    }
+  } catch { deepLink = false; }
+  return { ok: true, copied: true, deepLink, text };
+});
 ipcMain.on('refresh-lyrics', () => refreshLyrics());
 ipcMain.on('control', (_e, action) => runControl(action));
 ipcMain.on('close-panel', () => setPanel(false));
+ipcMain.on('set-edit-mode', (_e, on) => setEditMode(on));
 ipcMain.on('quit-app', () => app.quit());
 ipcMain.on('set-clickable', (_e, on) => {
   if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(!on, { forward: true });

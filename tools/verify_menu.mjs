@@ -77,7 +77,7 @@ try {
   /* ---------------- main menu ---------------- */
   check('逐字 Glyph 已渲染', ready > 0, `glyphs=${ready}`);
   const menu0 = await ev('window.getMenuState()');
-  check('主菜单存在且默认关闭', menu0.open === false && menu0.pages === 6 && menu0.navs === 6, JSON.stringify(menu0));
+  check('主菜单存在且默认关闭', menu0.open === false && menu0.pages === 7 && menu0.navs === 7, JSON.stringify(menu0));
   await ev('window.setPanel(true)');
   const menu1 = await ev('window.getMenuState()');
   check('主菜单可唤出', menu1.open === true && (await ev("document.body.dataset.menuOpen")) === '1');
@@ -176,6 +176,41 @@ try {
   /* ---------------- close menu ---------------- */
   await ev("document.getElementById('menuClose').click()");
   check('关闭按钮收起主菜单', (await ev('window.getMenuState().open')) === false);
+
+  /* ---------------- rebindable hotkeys ---------------- */
+  const hkCount = await ev("document.querySelectorAll('#hkList .hotkey').length");
+  check('热键列表渲染 8 个动作', hkCount === 8, `rows=${hkCount}`);
+  await ev("window.applyHotkey('panel', 'Control+Alt+K')");
+  const hk1 = await ev("document.querySelector('#hkList [data-hk=panel]').textContent");
+  check('热键重绑定生效', /Control \+ Alt \+ K/.test(hk1), hk1);
+  await ev("window.applyHotkey('panel', 'Control+Alt+P')");
+  const hkEmpty = await ev("(() => { window.applyHotkey('next',''); return document.querySelector('#hkList [data-hk=next]').textContent; })()");
+  check('热键可清空为未设置', hkEmpty.includes('未设置'), hkEmpty);
+
+  /* ---------------- free lyric placement ---------------- */
+  await ev("window.applyLyricPos({left:{x:12,y:30},right:null})");
+  const pos1 = await ev(`(() => { const s = getComputedStyle(document.querySelector('.side.left'));
+    return { leftPct: parseFloat(s.left) / window.innerWidth * 100,
+             topPct: parseFloat(s.top) / window.innerHeight * 100,
+             custom: document.querySelector('.side.left').dataset.customPos }; })()`);
+  check('自定义歌词位置生效', pos1.custom === '1' && Math.abs(pos1.leftPct - 12) < 0.5 &&
+    Math.abs(pos1.topPct - 30) < 0.5, JSON.stringify(pos1));
+  await ev("window.setEditMode(true)");
+  await sleep(450);   // opacity transition is .35s
+  const ed = await ev(`(() => { const s = getComputedStyle(document.querySelector('.side.left'));
+    return { edit: document.body.dataset.edit, pe: s.pointerEvents, opacity: s.opacity }; })()`);
+  check('拖动编辑模式：歌词可点且不淡出', ed.edit === '1' && ed.pe === 'auto' && parseFloat(ed.opacity) === 1, JSON.stringify(ed));
+  await ev("window.resetLyricPos()");
+  const pos2 = await ev("document.querySelector('.side.left').dataset.customPos");
+  check('重置位置恢复默认', pos2 === '0', `custom=${pos2}`);
+  await ev("window.setEditMode(false)");
+
+  /* ---------------- style sliders ---------------- */
+  await ev("(() => { const r=document.querySelector('[data-cfg=lineHeight]'); r.value='1.9'; r.dispatchEvent(new Event('input')); })()");
+  check('行距滑块生效', (await ev("getComputedStyle(document.documentElement).getPropertyValue('--lh').trim()")) === '1.9');
+  await ev("(() => { const r=document.querySelector('[data-cfg=sideWidth]'); r.value='32'; r.dispatchEvent(new Event('input')); })()");
+  check('侧栏宽度滑块生效', (await ev("getComputedStyle(document.documentElement).getPropertyValue('--side-w').trim()")) === '32vw');
+  check('选歌页存在', (await ev("document.querySelectorAll('.page[data-page=pick]').length")) === 1);
   check('运行期无 JS 异常', errors.length === 0, errors.join(' | ') || 'none');
 } catch (e) {
   check('测试执行未中断', false, String(e && e.stack || e));

@@ -338,8 +338,45 @@ async function lrclib(track) {
   return null;
 }
 
+/* --------------------------------------------------------- song search (pick page) */
+
+/**
+ * Search songs on a platform for the "选歌" page. Text + album art only; playback is
+ * handed back to the platform's own client (URL scheme + clipboard fallback in main.js).
+ * @returns [{platform, id, title, artist, album, duration, cover}]
+ */
+async function searchSongs(query, platform) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  if (platform === 'netease') {
+    const j = await request(
+      `https://music.163.com/api/search/get/web?s=${encodeURIComponent(q)}&type=1&offset=0&limit=15`,
+      { headers: { Referer: 'https://music.163.com' } });
+    return (j?.result?.songs || []).map((s) => ({
+      platform: 'netease', id: s.id,
+      title: s.name,
+      artist: (s.artists || []).map((x) => x.name).join('/'),
+      album: s.album?.name || '',
+      duration: Math.round((Number(s.duration) || 0) / 1000),
+      cover: null    // filled lazily per row is too chatty; cover shown only in the play card
+    }));
+  }
+  // default: QQ Music
+  const j = await request(
+    `https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=15&w=${encodeURIComponent(q)}&format=json`,
+    { headers: { Referer: 'https://y.qq.com/' } });
+  return (j?.data?.song?.list || []).map((s) => ({
+    platform: 'qqmusic', id: s.songmid,
+    title: s.songname,
+    artist: (s.singer || []).map((x) => x.name).join('/'),
+    album: s.albumname || '',
+    duration: Number(s.interval) || 0,
+    cover: s.albummid ? `https://y.gtimg.cn/music/photo_new/T002R68x68M000${s.albummid}.jpg` : null
+  }));
+}
+
 module.exports = {
-  qqmusic, netease, lrclib,
+  qqmusic, netease, lrclib, searchSongs,
   parseLrc, parseYrc, plainToLines, attachTranslations, stripCredits,
   cleanTitle, cleanArtist, fold, pickBest
 };
