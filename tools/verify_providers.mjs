@@ -75,7 +75,15 @@ check('手动指定源覆盖平台推断', L.resolveOrder('netease', 'qqmusic')[
 check('关闭在线歌词返回空链', L.resolveOrder('qqmusic', 'off').length === 0);
 check('平台识别 QQ 音乐', L.platformFromApp('QQMusic.exe') === 'qqmusic');
 check('平台识别网易云', L.platformFromApp('NeteaseCloudMusic') === 'netease');
-check('平台识别其它', L.platformFromApp('Spotify.exe') === 'other');
+check('平台识别酷狗', L.platformFromApp('KuGou.exe') === 'kugou');
+check('平台识别汽水音乐', L.platformFromApp('QishuiMusic.exe') === 'qishui');
+check('平台识别 Apple Music', L.platformFromApp('AppleMusic.exe') === 'applemusic');
+check('平台识别 Spotify', L.platformFromApp('Spotify.exe') === 'spotify');
+check('平台识别其它', L.platformFromApp('SomePlayer.exe') === 'other');
+check('酷狗源顺序', L.resolveOrder('kugou', 'auto')[0] === 'kugou');
+check('汽水走中文同曲匹配', L.resolveOrder('qishui', 'auto')[0] === 'netease');
+check('Spotify 先试 LRCLIB', L.resolveOrder('spotify', 'auto')[0] === 'lrclib');
+check('Apple Music 先试 LRCLIB', L.resolveOrder('applemusic', 'auto')[0] === 'lrclib');
 check('曲名清洗', P.cleanTitle('True Love (Explicit) [Remastered]') === 'True Love');
 check('艺人清洗', P.cleanArtist('P!NK/Lily Allen feat. Someone') === 'P!NK');
 check('trackKey 与噪声无关',

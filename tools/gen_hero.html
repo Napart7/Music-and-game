@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    background:
+      radial-gradient(900px 500px at 12% -10%, rgba(90,140,255,.30), transparent 60%),
+      radial-gradient(800px 460px at 92% 108%, rgba(255,110,190,.22), transparent 60%),
+      radial-gradient(600px 400px at 50% 50%, rgba(120,90,255,.12), transparent 70%),
+      linear-gradient(135deg, #070b16 0%, #0b1120 45%, #0a0f1c 100%);
+    color: #eaf2ff; position: relative;
+  }
+  /* subtle grid + stars */
+  .grid { position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(140,180,255,.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(140,180,255,.05) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(70% 70% at 50% 45%, #000 30%, transparent 100%); }
+  .glow-a, .glow-b { position: absolute; border-radius: 50%; filter: blur(70px); }
+  .glow-a { width: 420px; height: 420px; left: -120px; top: -140px; background: rgba(80,140,255,.30); }
+  .glow-b { width: 380px; height: 380px; right: -100px; bottom: -120px; background: rgba(255,100,180,.22); }
+
+  /* fake lyric overlay, left + right, centre clear */
+  .lyric { position: absolute; top: 176px; width: 330px; }
+  .lyric.left { left: 64px; text-align: left; }
+  .lyric.right { right: 64px; text-align: right; top: 210px; }
+  .faded { font-size: 17px; color: rgba(226,238,255,.34); line-height: 1.9; margin-bottom: 10px; }
+  .faded.far { opacity: .55; }
+  .cur { font-size: 30px; font-weight: 600; letter-spacing: .05em; line-height: 1.5;
+    color: #f7e1d7;
+    text-shadow: 0 0 2px rgba(255,255,255,.7), 0 0 14px rgba(255,120,190,.55),
+                 0 0 38px rgba(255,120,190,.30), 0 0 76px rgba(255,120,190,.16); }
+  .cur .lit { color: #fff;
+    text-shadow: 0 0 3px #fff, 0 0 16px rgba(255,150,210,.95),
+                 0 0 40px rgba(255,120,190,.7), 0 0 84px rgba(255,120,190,.35); }
+  .tr { font-size: 16px; color: rgba(206,226,255,.8); line-height: 1.9; }
+  .tr.far { opacity: .5; }
+  .side-label { font-size: 10px; letter-spacing: .24em; color: rgba(160,195,245,.55); margin-bottom: 12px; }
+
+  /* centre: brand */
+  .brand { position: absolute; left: 50%; top: 198px; transform: translateX(-50%); text-align: center; width: 520px; }
+  .logo { width: 66px; height: 66px; margin: 0 auto 18px; border-radius: 20px;
+    background: linear-gradient(145deg, rgba(255,255,255,.16), rgba(255,255,255,.03));
+    border: 1px solid rgba(255,255,255,.22); display: grid; place-items: center;
+    box-shadow: 0 10px 40px rgba(90,130,255,.35), inset 0 1px 0 rgba(255,255,255,.35);
+    font-size: 30px; color: #fff; text-shadow: 0 0 22px rgba(140,190,255,.9); }
+  h1 { font-size: 58px; letter-spacing: .04em; font-weight: 700; line-height: 1.05;
+    background: linear-gradient(180deg, #ffffff 20%, #b9d2ff 70%, #8fb0ff 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 6px 28px rgba(120,170,255,.35)); }
+  .sub { margin-top: 12px; font-size: 16.5px; color: rgba(214,229,255,.82); letter-spacing: .06em; }
+  .tagline { margin-top: 8px; font-size: 12.5px; color: rgba(160,190,240,.6); letter-spacing: .14em; }
+
+  /* platform pills */
+  .pills { position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%);
+    display: flex; gap: 10px; white-space: nowrap; }
+  .pill { padding: 9px 16px; border-radius: 999px; font-size: 12.5px; color: rgba(225,236,255,.9);
+    background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.14);
+    backdrop-filter: blur(10px); }
+  .pill.hot { border-color: rgba(150,190,255,.5); background: rgba(120,170,255,.16);
+    box-shadow: 0 0 22px rgba(110,160,255,.25); }
+  .foot { position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%);
+    font-size: 11px; letter-spacing: .18em; color: rgba(150,178,225,.45); }
+  .badge { position: absolute; top: 30px; left: 50%; transform: translateX(-50%);
+    font-size: 10.5px; letter-spacing: .3em; color: rgba(170,200,245,.55); }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="glow-a"></div><div class="glow-b"></div>
+  <div class="badge">WINDOWS · 透明置顶 · 不注入游戏进程</div>
+
+  <div class="lyric left">
+    <div class="side-label">LYRICS · 逐字 KARAOKE</div>
+    <div class="faded far">屏幕微光落在窗台</div>
+    <div class="cur"><span class="lit">都是勇敢的</span>你的不同</div>
+    <div class="faded">你犯的错 你的沉默</div>
+  </div>
+
+  <div class="brand">
+    <div class="logo">◈</div>
+    <h1>GlassLyrics</h1>
+    <div class="sub">把液态玻璃歌词，搬进任何 Windows 游戏</div>
+    <div class="tagline">QQ · 网易云 · 酷狗 · 汽水 · Apple Music · Spotify</div>
+  </div>
+
+  <div class="lyric right">
+    <div class="side-label" style="text-align:right">TRANSLATION · 翻译</div>
+    <div class="faded far" style="text-align:right">A faint glow rests on the sill</div>
+    <div class="tr"><span style="color:#fff">We are all the brave ones</span><br>the wound on your forehead</div>
+    <div class="tr far" style="text-align:right">Your difference, your mistakes</div>
+  </div>
+
+  <div class="pills">
+    <div class="pill hot">QQ 音乐</div>
+    <div class="pill hot">网易云 YRC 逐字</div>
+    <div class="pill hot">酷狗音乐</div>
+    <div class="pill">汽水音乐</div>
+    <div class="pill">Apple Music</div>
+    <div class="pill">Spotify</div>
+  </div>
+  <div class="foot">中央留空不挡准星 · 自捕捉游戏窗口 · 60FPS · MIT</div>
+</body>
+</html>

@@ -338,6 +338,121 @@ async function lrclib(track) {
   return null;
 }
 
+/* --------------------------------------------------------------- Kugou */
+
+/** Kugou: public mobile search → krcs candidate search → plain-text LRC download.
+ *  No account, no KRC decryption (KRC word-level is proprietary and encrypted). */
+async function kugou(track) {
+  const q = [cleanTitle(track.title), cleanArtist(track.artist)].filter(Boolean).join(' ');
+  if (!q) return null;
+  const search = await request(
+    `https://mobiles.kugou.com/api/v3/search/song?format=json&keyword=${encodeURIComponent(q)}&page=1&pagesize=10&showtype=1`,
+    { headers: { Referer: 'https://www.kugou.com/' } });
+  const hit = pickBest(search?.data?.info, (s) => ({
+    name: s.songname,
+    hash: s.hash,
+    dur: Number(s.duration) || 0,
+    artist: s.singername || '',
+    album: s.album_name || '',
+    albumId: s.album_id || ''
+  }), track);
+  if (!hit || !hit.hash) return null;
+
+  const cands = await request(
+    `https://krcs.kugou.com/search?ver=1&man=yes&client=mobi&keyword=${encodeURIComponent(hit.name + ' - ' + hit.artist)}` +
+    `&duration=${Math.round(hit.dur * 1000)}&hash=${encodeURIComponent(hit.hash)}`,
+    { headers: { Referer: 'https://www.kugou.com/' } });
+  const cand = (cands?.candidates || [])[0];
+  if (!cand || !cand.id) return null;
+
+  const dl = await request(
+    `https://lyrics.kugou.com/download?ver=1&client=pc&id=${encodeURIComponent(cand.id)}` +
+    `&accesskey=${encodeURIComponent(cand.accesskey)}&fmt=lrc&charset=utf8`,
+    { headers: { Referer: 'https://www.kugou.com/' } });
+  const raw = Buffer.from(String(dl?.content || ''), 'base64').toString('utf8');
+  const lines = stripCredits(parseLrc(raw));
+  if (!lines.length) return null;
+  const cover = hit.albumId
+    ? `https://imge.kugou.com/stdmusic/480/${hit.albumId}.jpg` : null;
+  return normalise({
+    provider: '酷狗音乐', source: 'kugou-lrc', platformId: 'kugou',
+    wordSync: false, synced: true, lines, cover,
+    title: hit.name, artist: hit.artist
+  });
+}
+
+/* ------------------------------------------------------ iTunes / Apple Music */
+
+/** Apple Music has no public lyric endpoint. iTunes Search gives real metadata + artwork
+ *  (public, no auth), which we use for Apple Music sessions and for cover fallbacks. */
+async function itunesMeta(track) {
+  const term = [cleanTitle(track.title), cleanArtist(track.artist)].filter(Boolean).join(' ');
+  if (!term) return null;
+  for (const country of ['us', 'hk', 'tw', 'jp']) {
+    try {
+      const j = await request(
+        `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=song&limit=5&country=${country}`,
+        { headers: { Accept: 'application/json' } });
+      const hit = pickBest(j?.results, (r) => ({
+        name: r.trackName,
+        id: r.trackId,
+        dur: Math.round((Number(r.trackTimeMillis) || 0) / 1000),
+        artist: r.artistName || '',
+        album: r.collectionName || '',
+        cover: (r.artworkUrl100 || '').replace('100x100bb', '600x600bb')
+      }), track);
+      if (hit) return hit;
+    } catch { /* try next storefront */ }
+  }
+  return null;
+}
+
+/* --------------------------------------------------------------- Spotify */
+
+let spotifyToken = null;   // { token, exp }
+/**
+ * Spotify Web API (client credentials). Users bring their OWN app credentials in the
+ * settings page — we never ship a shared secret. Grants catalogue search + playlist
+ * metadata; playback itself is controlled through SMTC like every other client.
+ */
+async function spotifyTokenFor(id, secret) {
+  if (!id || !secret) return null;
+  const now = Date.now();
+  if (spotifyToken && spotifyToken.id === id && spotifyToken.exp > now + 30000) return spotifyToken.token;
+  const basic = Buffer.from(`${id}:${secret}`).toString('base64');
+  const res = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'grant_type=client_credentials'
+  });
+  if (!res.ok) throw new Error('spotify-token-' + res.status);
+  const j = await res.json();
+  spotifyToken = { id, token: j.access_token, exp: now + (Number(j.expires_in) || 3600) * 1000 };
+  return spotifyToken.token;
+}
+
+async function spotifySearch(query, creds) {
+  const token = await spotifyTokenFor(creds?.clientId, creds?.clientSecret);
+  if (!token) return [];
+  const j = await request(
+    `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=10`,
+    { headers: { Authorization: `Bearer ${token}` } });
+  return (j?.tracks?.items || []).map((t) => ({
+    platform: 'spotify', id: t.id,
+    title: t.name,
+    artist: (t.artists || []).map((a) => a.name).join('/'),
+    album: t.album?.name || '',
+    duration: Math.round((Number(t.duration_ms) || 0) / 1000),
+    cover: t.album?.images?.[0]?.url || null
+  }));
+}
+
+/** Spotify as a LYRIC provider: no public lyrics API, so metadata only. Returning null
+ *  lets fetchLyrics fall through to LRCLIB / Netease / QQ for the same song. */
+async function spotify(track) {
+  return null;
+}
+
 /* --------------------------------------------------------- song search (pick page) */
 
 /**
@@ -345,7 +460,7 @@ async function lrclib(track) {
  * handed back to the platform's own client (URL scheme + clipboard fallback in main.js).
  * @returns [{platform, id, title, artist, album, duration, cover}]
  */
-async function searchSongs(query, platform) {
+async function searchSongs(query, platform, creds) {
   const q = String(query || '').trim();
   if (!q) return [];
   if (platform === 'netease') {
@@ -360,6 +475,52 @@ async function searchSongs(query, platform) {
       duration: Math.round((Number(s.duration) || 0) / 1000),
       cover: null    // filled lazily per row is too chatty; cover shown only in the play card
     }));
+  }
+  if (platform === 'kugou') {
+    const j = await request(
+      `https://mobiles.kugou.com/api/v3/search/song?format=json&keyword=${encodeURIComponent(q)}&page=1&pagesize=15&showtype=1`,
+      { headers: { Referer: 'https://www.kugou.com/' } });
+    return (j?.data?.info || []).map((s) => ({
+      platform: 'kugou', id: s.hash,
+      title: s.songname,
+      artist: s.singername || '',
+      album: s.album_name || '',
+      duration: Number(s.duration) || 0,
+      cover: s.album_id ? `https://imge.kugou.com/stdmusic/240/${s.album_id}.jpg` : null
+    }));
+  }
+  if (platform === 'qishui') {
+    // Qishui (ByteDance Soda Music) has no public catalogue API; its library overlaps
+    // heavily with Netease for Chinese tracks, so we search there and hand playback back
+    // to the Qishui client (title copied to clipboard).
+    const j = await request(
+      `https://music.163.com/api/search/get/web?s=${encodeURIComponent(q)}&type=1&offset=0&limit=15`,
+      { headers: { Referer: 'https://music.163.com' } });
+    return (j?.result?.songs || []).map((s) => ({
+      platform: 'qishui', id: s.id,
+      title: s.name,
+      artist: (s.artists || []).map((x) => x.name).join('/'),
+      album: s.album?.name || '',
+      duration: Math.round((Number(s.duration) || 0) / 1000),
+      cover: (s.album && s.album.picUrl) ? `${s.album.picUrl}?param=240y240` : null,
+      matchedVia: 'netease'
+    }));
+  }
+  if (platform === 'applemusic') {
+    const j = await request(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=15&country=us`,
+      { headers: { Accept: 'application/json' } });
+    return (j?.results || []).map((r) => ({
+      platform: 'applemusic', id: r.trackId,
+      title: r.trackName,
+      artist: r.artistName || '',
+      album: r.collectionName || '',
+      duration: Math.round((Number(r.trackTimeMillis) || 0) / 1000),
+      cover: (r.artworkUrl100 || '').replace('100x100bb', '240x240bb')
+    }));
+  }
+  if (platform === 'spotify') {
+    return spotifySearch(q, creds);
   }
   // default: QQ Music
   const j = await request(
@@ -376,7 +537,7 @@ async function searchSongs(query, platform) {
 }
 
 module.exports = {
-  qqmusic, netease, lrclib, searchSongs,
+  qqmusic, netease, lrclib, kugou, spotify, spotifySearch, itunesMeta, searchSongs,
   parseLrc, parseYrc, plainToLines, attachTranslations, stripCredits,
   cleanTitle, cleanArtist, fold, pickBest
 };

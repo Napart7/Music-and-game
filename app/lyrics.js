@@ -9,6 +9,7 @@ const P = require('./providers');
 const PROVIDERS = {
   qqmusic: P.qqmusic,
   netease: P.netease,
+  kugou: P.kugou,
   lrclib: P.lrclib
 };
 // Bump when provider behaviour changes so stale low-quality caches are re-fetched once.
@@ -26,14 +27,20 @@ function cacheName(t, preferred) {
     .digest('hex').slice(0, 24) + '.json';
 }
 
-/** Provider order for the current platform and the user's preferred source. */
+/** Provider order for the current platform and the user's preferred source.
+ *  Platforms without a public lyric API (Spotify / Apple Music / Qishui) fall back to
+ *  same-song matching on the Chinese providers, then LRCLIB. */
 function resolveOrder(platform, preferred) {
-  const all = ['qqmusic', 'netease', 'lrclib'];
+  const all = ['qqmusic', 'netease', 'kugou', 'lrclib'];
   if (preferred === 'off') return [];
   if (all.includes(preferred)) return [preferred, ...all.filter((p) => p !== preferred)];
-  if (platform === 'qqmusic') return ['qqmusic', 'netease', 'lrclib'];
-  if (platform === 'netease') return ['netease', 'qqmusic', 'lrclib'];
-  return ['lrclib', 'netease', 'qqmusic'];
+  if (platform === 'qqmusic') return ['qqmusic', 'netease', 'kugou', 'lrclib'];
+  if (platform === 'netease') return ['netease', 'qqmusic', 'kugou', 'lrclib'];
+  if (platform === 'kugou') return ['kugou', 'netease', 'qqmusic', 'lrclib'];
+  if (platform === 'qishui') return ['netease', 'qqmusic', 'kugou', 'lrclib'];
+  if (platform === 'spotify') return ['lrclib', 'netease', 'qqmusic', 'kugou'];
+  if (platform === 'applemusic') return ['lrclib', 'netease', 'kugou', 'qqmusic'];
+  return ['lrclib', 'netease', 'qqmusic', 'kugou'];
 }
 
 /** Map an SMTC SourceAppUserModelId to a platform id. */
@@ -41,6 +48,10 @@ function platformFromApp(app) {
   const s = String(app || '').toLowerCase();
   if (/qqmusic|qq music|tencent.*?music|weixin.*?music/.test(s)) return 'qqmusic';
   if (/cloudmusic|netease|music\.163|163music/.test(s)) return 'netease';
+  if (/kugou|kgmusic|kugouconcept/.test(s)) return 'kugou';
+  if (/qishui|luna[-.]?music|sodamusic/.test(s)) return 'qishui';
+  if (/applemusic|appleinc.*music|music\.ui|itunes/.test(s)) return 'applemusic';
+  if (/spotify/.test(s)) return 'spotify';
   return 'other';
 }
 
@@ -107,13 +118,23 @@ async function fetchLyrics(track, cacheDir, opts = {}) {
   // before settling for line-level LRC. An explicit user choice is respected immediately.
   const qualityFirst = preferred === 'auto';
   let fallback = null;
+  // Platforms whose own API exposes no artwork (Spotify/Apple/Qishui): borrow iTunes art.
+  const enrichCover = async (result) => {
+    if (result.cover) return result;
+    if (!['applemusic', 'spotify', 'qishui'].includes(platform)) return result;
+    try {
+      const m = await P.itunesMeta(t);
+      if (m?.cover) result.cover = m.cover;
+    } catch { /* best effort */ }
+    return result;
+  };
   for (const name of order) {
     try {
       const r = await PROVIDERS[name](t);
       const usable = !!(r && r.ok && r.lines.length);
       tried.push({ provider: name, ok: usable, wordSync: !!(r && r.wordSync) });
       if (usable) {
-        const result = { ...r, platform, preferred, tried, cached: false };
+        const result = await enrichCover({ ...r, platform, preferred, tried, cached: false });
         if (!qualityFirst || r.wordSync) {
           writeCache(cacheDir, t, preferred, result);
           return result;
@@ -148,7 +169,8 @@ function indexAt(lines, pos) {
 
 module.exports = {
   fetchLyrics, resolveOrder, platformFromApp, indexAt, trackKey,
-  searchSongs: P.searchSongs,
+  searchSongs: (query, platform, creds) => P.searchSongs(query, platform, creds),
+  itunesMeta: P.itunesMeta,
   // re-exported for the regression suite / renderer utilities
   parseLrc: P.parseLrc,
   parseYrc: P.parseYrc,

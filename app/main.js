@@ -68,8 +68,12 @@ const DEFAULTS = {
   minWindowHeight: 400,
   // --- lyrics: platform-aware providers ---
   // auto = follow the SMTC source app; explicit values pin a preferred provider.
-  lyricSource: 'auto',   // 'auto' | 'qqmusic' | 'netease' | 'lrclib' | 'off'
-  lyricOffsetMs: 0       // manual timeline calibration
+  lyricSource: 'auto',   // 'auto' | 'qqmusic' | 'netease' | 'kugou' | 'lrclib' | 'off'
+  lyricOffsetMs: 0,      // manual timeline calibration
+  // Optional Spotify Web API credentials (client credentials flow, catalogue search only).
+  // Stored locally in config.json; never bundled, never uploaded.
+  spotifyClientId: '',
+  spotifyClientSecret: ''
 };
 
 // Definitely-not-a-game processes. Anything unrecognised but fullscreen/borderless is
@@ -372,6 +376,8 @@ function rebuildTray() {
         click: () => setConfigValue({ lyricSource: 'qqmusic' }) },
       { label: '网易云音乐优先', type: 'radio', checked: config.lyricSource === 'netease',
         click: () => setConfigValue({ lyricSource: 'netease' }) },
+      { label: '酷狗音乐优先', type: 'radio', checked: config.lyricSource === 'kugou',
+        click: () => setConfigValue({ lyricSource: 'kugou' }) },
       { label: 'LRCLIB 优先', type: 'radio', checked: config.lyricSource === 'lrclib',
         click: () => setConfigValue({ lyricSource: 'lrclib' }) },
       { type: 'separator' },
@@ -588,6 +594,16 @@ function maybeSmoke(d) {
             .then((r) => (r && r.ok) ? ('ok:' + r.list.length) : ('err:' + (r && r.error)))
             .catch((e) => 'ex:' + e.message)
         : 'no-bridge',
+      pickKugou: window.glass
+        ? await window.glass.searchSongs('孤勇者', 'kugou')
+            .then((r) => (r && r.ok) ? ('ok:' + r.list.length) : ('err:' + (r && r.error)))
+            .catch((e) => 'ex:' + e.message)
+        : 'no-bridge',
+      pickApple: window.glass
+        ? await window.glass.searchSongs('Blinding Lights', 'applemusic')
+            .then((r) => (r && r.ok) ? ('ok:' + r.list.length) : ('err:' + (r && r.error)))
+            .catch((e) => 'ex:' + e.message)
+        : 'no-bridge',
       fitState: typeof window.getFitState === 'function' ? window.getFitState() : null,
       lyricSrc: document.getElementById('pLyricSrc').textContent,
       lyricState: typeof window.getLyricState === 'function' ? window.getLyricState() : null,
@@ -722,7 +738,12 @@ ipcMain.handle('get-lyrics', () => lastLyrics);
 // Pick page: text search on the public platform APIs, no account required.
 ipcMain.handle('search-songs', async (_e, { query, platform }) => {
   try {
-    const list = await lyricsEngine.searchSongs(query, platform === 'netease' ? 'netease' : 'qqmusic');
+    const p = ['netease', 'kugou', 'applemusic', 'spotify', 'qishui'].includes(platform) ? platform : 'qqmusic';
+    const creds = { clientId: config.spotifyClientId, clientSecret: config.spotifyClientSecret };
+    const list = await lyricsEngine.searchSongs(query, p, creds);
+    if (p === 'spotify' && !list.length && !config.spotifyClientId) {
+      return { ok: false, error: 'spotify-needs-credentials', list: [] };
+    }
     return { ok: true, list };
   } catch (e) { return { ok: false, error: e.message, list: [] }; }
 });
@@ -737,6 +758,17 @@ ipcMain.handle('play-song', async (_e, song) => {
     if (song.platform === 'netease') {
       await shell.openExternal('orpheus://search?q=' + encodeURIComponent(text));
       deepLink = true;
+    } else if (song.platform === 'kugou') {
+      await shell.openExternal('kugou://' + encodeURIComponent(text));
+      deepLink = true;
+    } else if (song.platform === 'spotify') {
+      await shell.openExternal('spotify:search:' + encodeURIComponent(text));
+      deepLink = true;
+    } else if (song.platform === 'applemusic') {
+      await shell.openExternal('music://music.apple.com/search?term=' + encodeURIComponent(text));
+      deepLink = true;
+    } else if (song.platform === 'qishui') {
+      deepLink = false;    // no stable public URL scheme; clipboard fallback only
     } else {
       await shell.openExternal('qqmusic://qq.com/ui/search?w=' + encodeURIComponent(text));
       deepLink = true;
