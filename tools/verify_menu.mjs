@@ -211,6 +211,52 @@ try {
   await ev("(() => { const r=document.querySelector('[data-cfg=sideWidth]'); r.value='32'; r.dispatchEvent(new Event('input')); })()");
   check('侧栏宽度滑块生效', (await ev("getComputedStyle(document.documentElement).getPropertyValue('--side-w').trim()")) === '32vw');
   check('选歌页存在', (await ev("document.querySelectorAll('.page[data-page=pick]').length")) === 1);
+
+  /* ---------------- floating lyric rows ---------------- */
+  const rows1 = await ev("window.getfloatRows()");
+  check('漂浮多行渲染（默认 4 行）', rows1.left === 4 && rows1.drift === 'drift', JSON.stringify(rows1));
+  await ev("(() => { const r=document.querySelector('[data-cfg=floatLines]'); r.value='6'; r.dispatchEvent(new Event('input')); })()");
+  await sleep(600);   // rows rebuild on the next tick
+  const rows2 = await ev("window.getfloatRows()");
+  check('漂浮行数可调到 6', rows2.left === 6, JSON.stringify(rows2));
+  const fstyles = await ev(`(() => {
+    const rows = [...document.querySelectorAll('.side.left .float-row')];
+    return { ops: rows.map(r => r.style.getPropertyValue('--fo')),
+             fss: rows.map(r => r.style.getPropertyValue('--fs')),
+             durs: [...new Set(rows.map(r => r.style.getPropertyValue('--dur')))],
+             anims: rows.map(r => getComputedStyle(r).animationName) };
+  })()`);
+  check('透明度/字号按距离渐变', new Set(fstyles.ops).size >= 3 && new Set(fstyles.fss).size >= 3,
+    JSON.stringify({ ops: fstyles.ops, fss: fstyles.fss }));
+  check('各行漂移速度不同', fstyles.durs.length >= 3, 'durs=' + fstyles.durs.join(','));
+  check('漂移动画由合成器运行', fstyles.anims.every(a => a === 'drift'), JSON.stringify(fstyles.anims));
+  await ev("(() => { const c=document.querySelector('[data-cfg=floatDrift]'); c.checked=false; c.dispatchEvent(new Event('input')); })()");
+  await sleep(300);
+  const driftOff = await ev("getComputedStyle(document.querySelector('.side.left .float-row')).animationName");
+  check('漂移动画可关闭', driftOff === 'none', driftOff);
+  await ev("(() => { const c=document.querySelector('[data-cfg=floatDrift]'); c.checked=true; c.dispatchEvent(new Event('input')); })()");
+
+  /* ---------------- perf: zero idle writes, quantised sweep, low-end mode ---------------- */
+  await ev("(() => { const c=document.querySelector('[data-cfg=wiggle]'); c.checked=false; c.dispatchEvent(new Event('input')); })()");
+  await ev("window.applyTrack({status:'PAUSED',position:10.4,duration:40})");
+  await sleep(2600);   // let pop/slam settle AND the 2s paused-position ramp finish
+  const w0 = await ev("({...window.__w})");
+  await sleep(800);
+  const w1 = await ev("({...window.__w})");
+  const idleWrites = (w1.p - w0.p) + (w1.pop - w0.pop) + (w1.slam - w0.slam) + (w1.wx - w0.wx) + (w1.wy - w0.wy);
+  check('暂停时零无效重绘', idleWrites === 0, JSON.stringify({ w0, w1 }));
+  const pVals = await ev("[...document.querySelectorAll('#curGlyphs .glyph')].map(g=>g.style.getPropertyValue('--p'))");
+  check('扫光量化为整数百分点', pVals.every(v => v === '-8%' || /^\d+%$/.test(v)), JSON.stringify(pVals));
+  await ev("(() => { const c=document.querySelector('[data-cfg=perfLow]'); c.checked=true; c.dispatchEvent(new Event('input')); })()");
+  const perf = await ev(`(() => { const g = document.querySelector('#curGlyphs .glyph');
+    const s = getComputedStyle(g).textShadow;
+    return { perf: document.body.dataset.perf, layers: (s.match(/rgba/g) || []).length }; })()`);
+  check('低配模式辉光减到 2 层', perf.perf === 'low' && perf.layers <= 2, JSON.stringify(perf));
+  const fps = await ev(`(async () => { window.__w.frames = 0; await new Promise(r => setTimeout(r, 1000)); return window.__w.frames; })()`);
+  check('低配模式帧率限到 ~30', fps > 18 && fps < 42, 'frames/s=' + fps);
+  await ev("(() => { const c=document.querySelector('[data-cfg=perfLow]'); c.checked=false; c.dispatchEvent(new Event('input')); })()");
+  await ev("(() => { const c=document.querySelector('[data-cfg=wiggle]'); c.checked=true; c.dispatchEvent(new Event('input')); })()");
+
   check('运行期无 JS 异常', errors.length === 0, errors.join(' | ') || 'none');
 } catch (e) {
   check('测试执行未中断', false, String(e && e.stack || e));

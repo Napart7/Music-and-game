@@ -54,6 +54,10 @@ const DEFAULTS = {
   lineHeight: 1.5,
   fontWeight: 600,
   lyricOpacity: 1,
+  // --- floating lyrics & performance ---
+  floatLines: 4,          // rows visible at once (3..6, includes the current line)
+  floatDrift: true,      // compositor-only drift animation per row
+  perfLow: false,         // low-end mode: 30fps cap + 2-layer shadows + no wiggle
   // --- auto-fit: follow the foreground game window ---
   autoFit: true,
   hideWhenNoGame: false,
@@ -538,6 +542,8 @@ function maybeSmoke(d) {
         return c ? { hidden: c.hidden, hasSrc: !!c.src && c.src.startsWith('data:image'),
                      srcLen: c.src ? c.src.length : 0 } : null; })(),
       hotkeyRows: document.querySelectorAll('#hkList .hotkey').length,
+      floatRows: typeof window.getfloatRows === 'function' ? window.getfloatRows() : null,
+      writes: { ...(window.__w || {}) },
       pickPage: document.querySelectorAll('.page[data-page=pick]').length,
       pickSearch: window.glass
         ? await window.glass.searchSongs('孤勇者', 'qqmusic')

@@ -29,6 +29,19 @@
   .side.left { left: var(--lx, 3.5%); top: var(--ly, 50%); text-align: left; }
   .side.right { right: var(--rx, 3.5%); top: var(--ry, 50%); text-align: right; }
   .side-label { font-size: 10px; letter-spacing: .22em; color: rgba(160,195,245,.5); margin-bottom: 14px; }
+  /* ---- floating lyric rows: each row drifts on its own compositor-only animation ---- */
+  @keyframes drift {
+    from { transform: translate(calc(-1 * var(--dx, 4px)), calc(-1 * var(--dy, 2px))); }
+    to   { transform: translate(var(--dx, 4px), var(--dy, 2px)); }
+  }
+  .float-row { animation: drift var(--dur, 8s) ease-in-out var(--del, 0s) infinite alternate; }
+  body[data-drift="0"] .float-row { animation: none; }
+  .float-row.faded { opacity: var(--fo, .5); margin: 10px 0; line-height: 1.7; word-break: break-all;
+    font-size: calc(clamp(14px, 1.3vw, 19px) * var(--fs, .85) * var(--font-scale));
+    color: rgba(226,238,255,.38); }
+  .float-row.tr { opacity: var(--fo, .9); margin: 8px 0; line-height: 1.7; word-break: break-all;
+    font-size: calc(clamp(12px, 1.1vw, 16px) * var(--fs, 1) * var(--font-scale));
+    color: rgba(206,226,255,.85); }
   .faded { font-size: clamp(14px, 1.3vw, 19px); line-height: 1.8; color: rgba(226,238,255,.34); }
   .faded.above { margin-bottom: 12px; }
   .faded.below { margin-top: 14px; }
@@ -51,6 +64,17 @@
     transform: translate(var(--wx,0px), var(--wy,0px)) scale(var(--pop,1));
     transform-origin: center 70%; transition: transform .12s linear; }
   body[data-stroke="0"] .glyph { -webkit-text-stroke: 0; }
+  /* ---- low-end mode: fewer shadow layers = much cheaper paint ---- */
+  body[data-perf="low"] .glyph {
+    text-shadow:
+      0 0 var(--g1) rgba(var(--glow-rgb), calc(var(--ga) * .9)),
+      0 0 var(--g2) rgba(var(--glow-rgb), calc(var(--ga) * .5));
+  }
+  body[data-perf="low"] .glyph::after {
+    text-shadow:
+      0 0 var(--g1) rgba(var(--glow-rgb), 1),
+      0 0 var(--g2) rgba(var(--glow-rgb), calc(var(--ga) * .6));
+  }
   .glyph::after { content: attr(data-c); position: absolute; left: 0; top: 0; color: #fff;
     -webkit-text-stroke: 0; white-space: pre; pointer-events: none;
     text-shadow:
@@ -245,14 +269,12 @@
 
 <div class="side left">
   <div class="side-label">原文 · 逐字 GLYPH</div>
-  <div class="faded above" id="prevLine">&nbsp;</div>
-  <div class="main-line" id="curLine"><div class="glyph-layer" id="curGlyphs"></div></div>
-  <div class="faded below" id="nextLine">&nbsp;</div>
+  <div id="leftStack"></div>
 </div>
 
 <div class="side right">
   <div class="side-label">翻译 / 状态</div>
-  <div class="tr-line" id="trLine">等待播放…</div>
+  <div id="rightStack"></div>
   <div class="clock" id="clock">0:00 / 0:00</div>
 </div>
 
@@ -401,6 +423,17 @@
           <div class="hint">默认双侧：左侧原文逐字、右侧翻译 / 下一句，中央 30% 视野完全留空。</div>
         </div>
         <div class="card">
+          <h4>漂浮歌词与性能</h4>
+          <div class="slider"><label>同屏漂浮行数</label>
+            <input type="range" data-cfg="floatLines" min="3" max="6" step="1" value="4">
+            <output data-out="floatLines">4</output></div>
+          <div class="switches">
+            <label class="switch"><input type="checkbox" data-cfg="floatDrift" checked> 漂浮摆动动画（每行独立方向 / 速度 / 幅度）</label>
+            <label class="switch"><input type="checkbox" data-cfg="perfLow"> 性能优先（低配模式：30 帧上限 · 辉光减层 · 关闭摆动）</label>
+          </div>
+          <div class="hint">每行歌词有各自的漂移方向、速度和透明度 / 字号渐变，动画由 GPU 合成器完成，不占用 JS。低端机或掉帧时打开「性能优先」。</div>
+        </div>
+        <div class="card">
           <h4>位置与样式（自由定制）</h4>
           <div class="slider"><label>侧栏宽度</label>
             <input type="range" data-cfg="sideWidth" min="20" max="36" step="1" value="28">
@@ -514,6 +547,9 @@ let state = { title: '—', artist: '—', album: '—', status: 'CONNECTING', p
 let lastKey = -1, charStarts = [], charEnds = [], charMode = 'normalized', popAt = [], lineAt = 0, lastWig = -1;
 let demoStart = performance.now(), layoutIdx = 0;
 let cfg = {}, lastFit = null;
+/* perf: cached glyph elements + last written CSS vars so unchanged values are never re-written */
+let gEls = [], lastP = [], lastPop = [], lastWx = [], lastWy = [], curLineEl = null, lastSlamQ = null, lastT = 0;
+window.__w = { p: 0, pop: 0, wx: 0, wy: 0, slam: 0, frames: 0 };   // style-write counters (regression evidence)
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
@@ -545,6 +581,14 @@ function renderGlyphs(text, words) {
   }
   popAt = new Array(text.length).fill(-1);
   lineAt = performance.now();
+  // cache for the tick loop: no per-frame getElementById / querySelector
+  gEls = [...a.children];
+  lastP = new Array(gEls.length).fill(undefined);
+  lastPop = new Array(gEls.length).fill(1);
+  lastWx = new Array(gEls.length).fill('');
+  lastWy = new Array(gEls.length).fill('');
+  curLineEl = $('curLine');
+  lastSlamQ = null;
 }
 function popScale(age) {
   const t = clamp(age / 160, 0, 1), k = 1 - t;
@@ -555,6 +599,62 @@ function hashRand(i, tick) {
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
 }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+/* Stable per-line drift params: direction / amplitude / speed differ for every row,
+ * driven purely by a CSS compositor animation (no JS per frame). */
+function rowDriftVars(j, salt) {
+  const r1 = hashRand(j + salt, 101), r2 = hashRand(j + salt + 313, 57), r3 = hashRand(j + salt + 911, 29);
+  return {
+    dx: (2 + r1 * 6).toFixed(1) + 'px',
+    dy: (1 + r2 * 4).toFixed(1) + 'px',
+    dur: (6 + r3 * 7).toFixed(1) + 's',
+    del: (-r1 * 8).toFixed(1) + 's'
+  };
+}
+const FO_FALL = [1, .52, .34, .22, .14];
+const FS_FALL = [1, .82, .7, .6, .52];
+function renderLine(idx) {
+  const n = clamp(Math.round(cfg.floatLines ?? 4), 3, 6);
+  const aboveN = idx > 0 ? 1 : 0;
+  const belowN = n - 1 - aboveN;
+  let left = '', right = '';
+  for (let j = idx - aboveN; j <= idx + belowN; j++) {
+    const isCur = j === idx;
+    const line = LINES[j];
+    const d = Math.abs(j - idx);
+    const v = rowDriftVars(j, 0);
+    const style = `--fo:${isCur ? 1 : (FO_FALL[d] ?? .12)};--fs:${isCur ? 1 : (FS_FALL[d] ?? .48)};` +
+                  `--dx:${v.dx};--dy:${v.dy};--dur:${v.dur};--del:${v.del}`;
+    if (isCur) {
+      left += `<div class="float-row current" style="${style}"><div class="main-line" id="curLine">` +
+              `<div class="glyph-layer" id="curGlyphs"></div></div></div>`;
+    } else {
+      const t = line ? escapeHtml(line.t) : '\u00a0';
+      left += `<div class="float-row faded" style="${style}">${t}</div>`;
+    }
+    // Right side mirrors the same window with translations, drifting independently.
+    // Rows without a translation are skipped entirely (fewer composited layers).
+    if (!line || !line.tr) continue;
+    const rv = rowDriftVars(j, 7777);
+    const tr = escapeHtml(line.tr);
+    const rstyle = `--fo:${isCur ? .95 : ((FO_FALL[d] ?? .12) * .95)};--fs:${isCur ? 1 : (FS_FALL[d] ?? .5)};` +
+                   `--dx:${rv.dx};--dy:${rv.dy};--dur:${rv.dur};--del:${rv.del}`;
+    right += `<div class="float-row tr" style="${rstyle}">${tr}</div>`;
+  }
+  $('leftStack').innerHTML = left;
+  $('rightStack').innerHTML = right;
+  const cur = LINES[idx] || LINES[0] || { t: ' ', words: null };
+  renderGlyphs(cur.t || ' ', cur.words);
+}
+window.renderLine = renderLine;
+window.getfloatRows = function () {
+  return { left: document.querySelectorAll('.side.left .float-row').length,
+           right: document.querySelectorAll('.side.right .float-row').length,
+           drift: getComputedStyle(document.querySelector('.side.left .float-row')).animationName };
+};
 function indexAtLocal(times, pos) {
   let lo = 0, hi = times.length - 1, ans = 0;
   while (lo <= hi) {
@@ -563,13 +663,7 @@ function indexAtLocal(times, pos) {
   }
   return ans;
 }
-function renderLine(idx) {
-  const cur = LINES[idx] || LINES[0] || { t: ' ', tr: '' };
-  $('prevLine').textContent = (idx > 0 && LINES[idx - 1]) ? LINES[idx - 1].t : '\u00a0';
-  $('nextLine').textContent = LINES[idx + 1] ? LINES[idx + 1].t : '\u00a0';
-  $('trLine').textContent = cur.tr || '\u00a0';
-  renderGlyphs(cur.t || ' ', cur.words);
-}
+function renderLine_OLD_removed() { /* replaced by the floating-row renderer above */ }
 
 window.applyTrack = function (d) {
   if (!d) return;
@@ -745,6 +839,8 @@ function applyVisual(c) {
   root.style.setProperty('--fw', c.fontWeight ?? 600);
   root.style.setProperty('--lyr-op', c.lyricOpacity ?? 1);
   document.body.dataset.stroke = c.stroke === false ? '0' : '1';
+  document.body.dataset.perf = c.perfLow ? 'low' : 'high';
+  document.body.dataset.drift = c.floatDrift === false ? '0' : '1';
   applyLyricPos(c.lyricPos || {});
   document.querySelectorAll('.tint').forEach(t => t.classList.toggle('on', t.dataset.value === (c.glowTint || 'white')));
   document.querySelectorAll('#sourceSeg button').forEach(b =>
@@ -807,6 +903,13 @@ window.syncConfig = function (c) {
 };
 
 function tick(now) {
+  requestAnimationFrame(tick);
+  // Frame cap: high refresh monitors used to burn CPU at 144+ fps for no visual gain.
+  // ~60 fps normally, ~30 fps in low-end mode.
+  const capMs = cfg.perfLow ? 33.4 : 16.4;
+  if (now - lastT < capMs - 1.2) return;
+  lastT = now;
+  window.__w.frames++;
   const hasTimeline = state.duration > 0;
   const basePos = hasTimeline
     ? state.position + clamp((now - state.recvAt) / 1000, 0, 2)
@@ -826,29 +929,45 @@ function tick(now) {
   }
   const key = idx;
   if (key !== lastKey) { renderLine(idx); lastKey = key; }
-  const g1 = $('curGlyphs').children;
-  const wt = Math.floor(now / 125), doWig = wt !== lastWig;
-  if (doWig) lastWig = wt;
+  const g1 = gEls;
+  const wt = Math.floor(now / 125);
+  const doWig = wt !== lastWig && cfg.wiggle !== false && !cfg.perfLow;
+  if (wt !== lastWig) lastWig = wt;
   for (let i = 0; i < g1.length; i++) {
     const s = charStarts[i] ?? 0, e = charEnds[i] ?? 1;
     const p = charMode === 'absolute'
       ? clamp((pos - s) / Math.max(.03, e - s), 0, 1)
       : clamp((local - s) / Math.max(.0001, e - s), 0, 1);
-    // -8% keeps the highlight fully hidden before a character starts (no bright leading edge).
-    const pp = p <= 0 ? '-8%' : (p * 100).toFixed(1) + '%';
-    g1[i].style.setProperty('--p', pp);
+    // -8% keeps the highlight fully hidden before a character starts. Quantised to
+    // integer percent: a 1% step is invisible on a karaoke sweep, but cuts the number
+    // of style invalidations per line from ~hundreds to ~100 per character.
+    const pv = p <= 0 ? -8 : Math.round(p * 100);
+    if (pv !== lastP[i]) {
+      g1[i].style.setProperty('--p', pv <= 0 ? '-8%' : pv + '%');
+      lastP[i] = pv; window.__w.p++;
+    }
     if (p > 0 && popAt[i] < 0) popAt[i] = now;
     const age = popAt[i] < 0 ? 9999 : now - popAt[i];
-    const pop = (cfg.wordPop === false || age >= 9999) ? 1
-      : (1 + .16 * Math.exp(-age / 90) * (1 - clamp(age / 220, 0, 1)));
-    g1[i].style.setProperty('--pop', pop.toFixed(3));
-    if (doWig && cfg.wiggle !== false) {
-      g1[i].style.setProperty('--wx', ((hashRand(i, wt) - .5) * 1.6).toFixed(2) + 'px');
-      g1[i].style.setProperty('--wy', ((hashRand(i + 977, wt) - .5) * 1.6).toFixed(2) + 'px');
+    let pop = 1;
+    if (cfg.wordPop !== false && age < 900) {
+      pop = 1 + .16 * Math.exp(-age / 90) * (1 - clamp(age / 220, 0, 1));
+    }
+    if (Math.abs(pop - lastPop[i]) > .004) {
+      g1[i].style.setProperty('--pop', pop.toFixed(3));
+      lastPop[i] = pop; window.__w.pop++;
+    }
+    if (doWig) {
+      const wx = ((hashRand(i, wt) - .5) * 1.6).toFixed(2) + 'px';
+      const wy = ((hashRand(i + 977, wt) - .5) * 1.6).toFixed(2) + 'px';
+      if (wx !== lastWx[i]) { g1[i].style.setProperty('--wx', wx); lastWx[i] = wx; window.__w.wx++; }
+      if (wy !== lastWy[i]) { g1[i].style.setProperty('--wy', wy); lastWy[i] = wy; window.__w.wy++; }
     }
   }
-  $('curLine').style.setProperty('--slam', cfg.slam === false ? '1' : popScale(now - lineAt).toFixed(3));
-  requestAnimationFrame(tick);
+  const slamQ = cfg.slam === false ? '1' : popScale(now - lineAt).toFixed(3);
+  if (slamQ !== lastSlamQ) {
+    if (curLineEl) curLineEl.style.setProperty('--slam', slamQ);
+    lastSlamQ = slamQ; window.__w.slam++;
+  }
 }
 renderLine(0);
 requestAnimationFrame(tick);
@@ -933,7 +1052,9 @@ document.querySelectorAll('#menuNav button').forEach(b =>
 $('menuClose').addEventListener('click', () => window.setPanel(false));
 
 function writeCfg(key, value) {
+  cfg = { ...cfg, [key]: value };          // local apply immediately (config round-trip follows)
   applyVisual({ ...cfg, [key]: value });
+  if (key === 'floatLines') lastKey = -1;  // row count changed: rebuild on the next tick
   if (key === 'lyricOffsetMs') window.setLyricOffset(value);
   if (window.glass) window.glass.setConfig({ [key]: value });
   return value;

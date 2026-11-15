@@ -52,11 +52,28 @@ function readCache(cacheDir, t, preferred) {
   return null;
 }
 
+// Keep the on-disk lyric cache bounded: on low-end machines an unbounded cache
+// grows for years. Oldest entries are pruned after every write.
+const MAX_CACHE_FILES = 300;
+
+function pruneCache(cacheDir) {
+  try {
+    const files = fs.readdirSync(cacheDir)
+      .filter((f) => f.endsWith('.json'))
+      .map((f) => { const p = path.join(cacheDir, f); return { p, m: fs.statSync(p).mtimeMs }; })
+      .sort((a, b) => b.m - a.m);            // newest first
+    for (const f of files.slice(MAX_CACHE_FILES)) {
+      try { fs.unlinkSync(f.p); } catch { /* best effort */ }
+    }
+  } catch { /* dir may not exist yet */ }
+}
+
 function writeCache(cacheDir, t, preferred, result) {
   try {
     fs.mkdirSync(cacheDir, { recursive: true });
     fs.writeFileSync(path.join(cacheDir, cacheName(t, preferred)),
       JSON.stringify({ ...result, fetchedAt: new Date().toISOString() }), 'utf8');
+    pruneCache(cacheDir);
   } catch (e) {
     console.error('[lyrics] cache write failed', e);
   }
