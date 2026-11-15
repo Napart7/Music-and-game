@@ -143,7 +143,14 @@ Debian/Ubuntu：`sudo apt install playerctl xdotool x11-utils`；缺少时其余
 
 ## 30 秒上手
 
-1. **下载** → [Releases](https://github.com/Napart7/Music-and-game/releases) 里的 `GlassLyrics Setup x.y.z.exe`（或绿色版 `GlassLyrics-Portable.exe`）
+1. **下载** → [Releases](https://github.com/Napart7/Music-and-game/releases)（三平台产物由 CI 构建）
+
+   | 平台 | 文件 |
+   |---|---|
+   | Windows | `GlassLyrics.Setup.x.y.z.exe`（安装版）· `GlassLyrics-Portable.exe`（绿色版） |
+   | macOS | `GlassLyrics-x.y.z-arm64.dmg`（Apple 芯片）· `GlassLyrics-x.y.z.dmg`（Intel） |
+   | Linux | `GlassLyrics-x.y.z.AppImage` · `glasslyrics_x.y.z_amd64.deb` |
+
 2. **播放** → 打开 QQ 音乐 / 网易云 / 酷狗 / 汽水 / Apple Music / Spotify 放一首歌
 3. **进游戏** → 歌词自动浮在画面两侧；独占全屏请改成「无边框全屏」
 4. **需要设置** → `Ctrl + Alt + P` 唤出液态玻璃主菜单
