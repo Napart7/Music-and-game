@@ -1,0 +1,37 @@
+# 统一换行符策略：仓库内一律存 LF，检出时按平台/类型转换。
+# 这样 Windows 的 PowerShell 脚本拿到 CRLF，Linux/macOS 的 shell 脚本拿到 LF，
+# 而 node / json / md 在三种系统上都是 LF，避免 diff 噪声与脚本解析失败。
+* text=auto eol=lf
+
+# Windows：cmd/PowerShell 原生偏好 CRLF（PS 5.1 对 LF 也能解析，但 CRLF 更稳）
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# POSIX 脚本必须 LF，否则 `#!/usr/bin/env bash\r` 会报 bad interpreter
+*.sh text eol=lf
+*.bash text eol=lf
+
+# 代码与配置：三种平台都用 LF
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# 二进制：不要做任何换行/编码转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.icns binary
+*.exe binary
+*.zip binary
+*.dmg binary
+*.AppImage binary
+*.deb binary

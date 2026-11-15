@@ -1,6 +1,6 @@
 {
   "name": "glasslyrics",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Cross-game transparent lyric overlay. No injection, no game memory access.",
   "main": "main.js",
   "author": "GlassLyrics contributors",
@@ -23,6 +23,7 @@
       "preload.js",
       "lyrics.js",
       "providers.js",
+      "backends/**/*",
       "renderer/**/*",
       "assets/**/*",
       "package.json"
@@ -30,13 +31,31 @@
     "extraResources": [
       { "from": "smtc-bridge.ps1", "to": "smtc-bridge.ps1" },
       { "from": "smtc-control.ps1", "to": "smtc-control.ps1" },
-      { "from": "window-probe.ps1", "to": "window-probe.ps1" }
+      { "from": "window-probe.ps1", "to": "window-probe.ps1" },
+      { "from": "backends", "to": "backends" }
     ],
     "win": {
       "icon": "assets/icon.ico",
       "target": [
         { "target": "nsis", "arch": ["x64"] },
         { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "mac": {
+      "icon": "assets/icon-512.png",
+      "category": "public.app-category.music",
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ]
+    },
+    "linux": {
+      "icon": "assets/icon-512.png",
+      "category": "AudioVideo",
+      "synopsis": "Cross-game lyric overlay",
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] }
       ]
     },
     "nsis": {

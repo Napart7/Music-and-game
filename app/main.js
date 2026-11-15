@@ -9,10 +9,15 @@ const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, screen, nativeI
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const lyricsEngine = require('./lyrics');
+const { backendFor, trayIconName } = require('./backends');
+const { parseMediaLine, parseWindowLine, normalizeAction } = require('./backends/parse');
 
 const ROOT = __dirname;
 const RES = app.isPackaged ? process.resourcesPath : ROOT;
+// Every OS-specific script / interpreter is resolved here and only here.
+const BACKEND = backendFor(process.platform, (name) => path.join(RES, name));
 const USER_DIR = app.getPath('userData');
 const CONFIG_FILE = path.join(USER_DIR, 'config.json');
 const TITLE = 'GlassLyricsOverlay';
@@ -120,6 +125,7 @@ let lastTrackKey = '';
 let lastLyrics = null;
 let lastSmtc = null;
 let currentPlatform = 'other';
+let lastBackendError = '';
 const hotkeys = {};
 
 let config = loadConfig();
@@ -177,7 +183,7 @@ function classifyWindow(info, scale) {
     const ratio = (w * h) / (d.bounds.width * d.bounds.height);
     const hinted = GAME_HINTS.some((k) => p.includes(k)) ||
                    /minecraft|terraria|elden ring|sekiro|dark souls/i.test(String(info.title || ''));
-    const isGame = hinted || ratio >= 0.72 || (ratio >= 0.5 && !info.caption);
+    const isGame = hinted || ratio >= 0.72 || (ratio >= 0.5 && !info.title);
     return { isGame, ratio: +ratio.toFixed(3),
              reason: hinted ? 'process-hint' : (isGame ? 'large-window' : 'small-or-captioned') };
   } catch {
@@ -202,12 +208,47 @@ function saveConfig() {
   }
 }
 
+/** Linux has no Electron login-item API: use the freedesktop XDG autostart entry. */
+function linuxAutostartPath() {
+  const base = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+  return path.join(base, 'autostart', 'glasslyrics.desktop');
+}
+
+function writeLinuxAutostart(enabled) {
+  const file = linuxAutostartPath();
+  try {
+    if (!enabled) { fs.rmSync(file, { force: true }); return; }
+    // Quote paths: Linux user dirs may contain spaces or non-ASCII characters.
+    const execLine = app.isPackaged
+      ? `"${process.execPath}"`
+      : `"${process.execPath}" "${ROOT}"`;
+    const body = [
+      '[Desktop Entry]',
+      'Type=Application',
+      'Name=GlassLyrics',
+      'Comment=Cross-game lyric overlay',
+      `Exec=${execLine}`,
+      'Terminal=false',
+      'X-GNOME-Autostart-enabled=true',
+      ''
+    ].join('\n');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, body, 'utf8');
+  } catch (e) {
+    console.error('[config] linux autostart failed', e);
+  }
+}
+
 function applyLogin() {
   const opts = { openAtLogin: !!config.openAtLogin };
   // In dev the executable is electron.exe, so pass the app dir as an argument.
   if (!app.isPackaged) {
     opts.path = process.execPath;
     opts.args = [ROOT];
+  }
+  if (BACKEND.capabilities.loginItem === 'xdg-autostart') {
+    writeLinuxAutostart(!!config.openAtLogin);
+    return;
   }
   try {
     app.setLoginItemSettings(opts);
@@ -405,8 +446,9 @@ function rebuildTray() {
 }
 
 function createTray() {
-  let img = nativeImage.createFromPath(path.join(ROOT, 'assets', 'icon.ico'));
+  let img = nativeImage.createFromPath(path.join(ROOT, trayIconName(process.platform)));
   if (img.isEmpty()) {
+    // Last-resort inline 16×16 PNG so a missing icon never blocks startup on any OS.
     img = nativeImage.createFromDataURL(
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAJUlEQVR42u3OMQEAAAgDINc/9K3hWGSBVsQAAAABAAAAAAAKALgKwHcAAH9gQAAAABJRU5ErkJggg=='
     );
@@ -427,7 +469,7 @@ function broadcastFit() {
       ok: true, at: new Date().toISOString(),
       autoFit: autoFitState, appliedBounds: win.getBounds(),
       windowProbe: lastWindowInfo ? { rect: lastWindowInfo.rect, rectPhysical: lastWindowInfo.rectPhysical,
-        caption: lastWindowInfo.caption, className: lastWindowInfo.className, process: lastWindowInfo.process } : null
+        title: lastWindowInfo.title, className: lastWindowInfo.className, process: lastWindowInfo.process } : null
     };
     const target = process.env.GL_FIT_OUT || path.join(USER_DIR, 'fit-smoke.json');
     try {
@@ -523,10 +565,8 @@ function applyWindowFit(info) {
 }
 
 function startWindowProbe() {
-  const script = path.join(RES, 'window-probe.ps1');
-  windowProbe = spawn('powershell.exe', [
-    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script
-  ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const b = BACKEND.window;
+  windowProbe = spawn(b.cmd, b.args(b.script), { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
 
   let buf = '';
   windowProbe.stdout.setEncoding('utf8');
@@ -536,10 +576,10 @@ function startWindowProbe() {
     while ((i = buf.indexOf('\n')) >= 0) {
       const line = buf.slice(0, i).trim();
       buf = buf.slice(i + 1);
-      if (!line.startsWith('{')) continue;
-      let d;
-      try { d = JSON.parse(line); } catch { continue; }
-      if (d.ok) applyWindowFit(d);
+      const d = parseWindowLine(line);
+      if (!d) continue;
+      if (d.ok && d.rect) applyWindowFit(d);
+      else if (d.error && d.error !== 'wayland-no-window-api') console.error('[winprobe]', d.error);
     }
   });
   windowProbe.stderr.on('data', (d) => console.error('[winprobe]', d.toString().trim()));
@@ -618,7 +658,7 @@ function maybeSmoke(d) {
         packaged: app.isPackaged, hotkeys, config, smtc: d, dom,
         autoFit: autoFitState,
         windowProbe: lastWindowInfo ? { rect: lastWindowInfo.rect, rectPhysical: lastWindowInfo.rectPhysical,
-                                        caption: lastWindowInfo.caption, className: lastWindowInfo.className } : null,
+                                        title: lastWindowInfo.title, className: lastWindowInfo.className } : null,
         lyrics: lastLyrics ? { ok: lastLyrics.ok, source: lastLyrics.source,
           provider: lastLyrics.provider, wordSync: !!lastLyrics.wordSync,
           lines: (lastLyrics.lines || []).length, synced: lastLyrics.synced,
@@ -683,10 +723,8 @@ function refreshLyrics() {
 }
 
 function startBridge() {
-  const script = path.join(RES, 'smtc-bridge.ps1');
-  bridge = spawn('powershell.exe', [
-    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script
-  ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const b = BACKEND.media;
+  bridge = spawn(b.cmd, b.args(b.script), { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
 
   let buf = '';
   bridge.stdout.setEncoding('utf8');
@@ -696,15 +734,23 @@ function startBridge() {
     while ((i = buf.indexOf('\n')) >= 0) {
       const line = buf.slice(0, i).trim();
       buf = buf.slice(i + 1);
-      if (!line.startsWith('{')) continue;
-      let d;
-      try { d = JSON.parse(line); } catch { continue; }
+      let d = parseMediaLine(line);
+      if (!d) continue;
+      if (d.ok === false) {
+        // Backend dependency missing (playerctl / Automation permission): surface once.
+        if (d.error && d.error !== lastBackendError) {
+          lastBackendError = d.error;
+          console.error('[smtc] backend error:', d.error);
+        }
+        continue;
+      }
+      lastBackendError = '';
       // Test hook: pin a known track so the real-lyrics pipeline can be verified deterministically.
       const forcedTrack = String(process.env.GL_FORCE_TRACK || '');
-      if (forcedTrack && d.ok && d.active) {
+      if (forcedTrack && d.active) {
         const [ft, fa, fd] = forcedTrack.split('|');
         d = { ...d, title: ft, artist: fa || '', album: '',
-              duration: Number(fd) || 231, position: 12, status: 'PLAYING' };
+              duration: Number(fd) || 231, position: 12, status: 'PLAYING', statusValue: 3 };
       }
       if (win && !win.isDestroyed()) win.webContents.send('smtc', { ...d, platform: currentPlatformFor(d) });
       maybeSmoke(d);
@@ -720,11 +766,10 @@ function startBridge() {
 }
 
 function runControl(action) {
-  if (!['play', 'pause', 'next', 'prev', 'toggle'].includes(action)) return;
-  const script = path.join(RES, 'smtc-control.ps1');
-  const p = spawn('powershell.exe', [
-    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Action', action
-  ], { windowsHide: true });
+  const a = normalizeAction(action);
+  if (!a) return;
+  const b = BACKEND.control;
+  const p = spawn(b.cmd, b.args(b.script, a), { windowsHide: true });
   p.stdout.on('data', (d) => console.log('[control]', d.toString().trim()));
   p.stderr.on('data', (d) => console.error('[control]', d.toString().trim()));
 }
@@ -795,6 +840,10 @@ if (!gotLock) {
 } else {
   app.on('second-instance', () => setLayerVisible(true));
   app.whenReady().then(() => {
+    // macOS: an overlay must not occupy the Dock or steal Cmd+Tab focus.
+    if (process.platform === 'darwin' && app.dock) {
+      try { app.dock.hide(); } catch { /* older mac builds */ }
+    }
     createWindow();
     createTray();
     registerHotkeys();

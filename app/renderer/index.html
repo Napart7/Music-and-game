@@ -693,7 +693,10 @@ window.applyTrack = function (d) {
   $('pPlatform').textContent = PLATFORM_CN[p] || PLATFORM_CN.other;
   $('pApp').textContent = state.app || '—';
   if (d.active === false) setCover(null);   // nothing playing → placeholder
+  // macOS (Spotify artworkUrl) / Linux (MPRIS artUrl) ship a cover URL directly.
+  if (d.coverUrl && d.coverUrl !== lastSmtcCover) { lastSmtcCover = d.coverUrl; setCover(d.coverUrl); }
 };
+let lastSmtcCover = '';
 function setCover(url) {
   const cov = $('pCover'), ph = $('pCoverPh');
   if (!cov || !ph) return;

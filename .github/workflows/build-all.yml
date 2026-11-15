@@ -1,0 +1,98 @@
+name: build
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # Cross-platform gate: contract tests run on plain Node everywhere; UI regressions run on
+  # the Windows runner because they drive headless Edge via CDP.
+  verify:
+    runs-on: windows-latest
+    env:
+      ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci --no-audit --no-fund
+      - name: Compliance + syntax (cross-platform node gate)
+        run: node tools/check_compliance.mjs
+      - name: Backend contract tests (win/mac/linux samples)
+        run: node tools/verify_backends.mjs
+      - name: Provider + lyric engine tests
+        run: |
+          node tools/verify_providers.mjs
+          node tools/verify_lyrics.mjs
+      - name: UI regressions (headless Edge)
+        run: |
+          node tools/verify_menu.mjs
+          node tools/verify_autofit.mjs
+          node tools/verify_preview.mjs
+
+  build:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: dist-win
+            targets: --win --x64
+          - os: macos-latest
+            artifact: dist-mac
+            targets: --mac
+          - os: ubuntu-latest
+            artifact: dist-linux
+            targets: --linux --x64
+    runs-on: ${{ matrix.os }}
+    env:
+      ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci --no-audit --no-fund
+      - name: Build ${{ matrix.os }}
+        working-directory: app
+        run: npx electron-builder ${{ matrix.targets }}
+      - name: List artifacts
+        shell: bash
+        run: ls -la dist | head -40
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Publish all platforms to the Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          fail_on_unmatched_files: false

@@ -4,17 +4,17 @@
 
 # GlassLyrics
 
-**把液态玻璃歌词，搬进任何 Windows 游戏。**
+**把液态玻璃歌词，搬进任何游戏。** Windows · macOS · Linux
 
 QQ 音乐 · 网易云音乐 · 酷狗音乐 · 汽水音乐 · Apple Music · Spotify
 
 [![Release](https://img.shields.io/github/v/release/Napart7/Music-and-game?style=flat-square&color=6f8cff&label=Release)](https://github.com/Napart7/Music-and-game/releases)
 [![License](https://img.shields.io/badge/License-MIT-9b7bff?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-4ea1ff?style=flat-square&logo=windows&logoColor=white)](#)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-4ea1ff?style=flat-square)](#%E5%B9%B3%E5%8F%B0%E6%94%AF%E6%8C%81)
 [![Electron](https://img.shields.io/badge/Electron-45-2f6bff?style=flat-square&logo=electron&logoColor=white)](#)
 [![No Injection](https://img.shields.io/badge/No%20Injection-%E4%B8%8D%E6%B3%A8%E5%85%A5%E8%BF%9B%E7%A8%8B-2ecc9a?style=flat-square)](#%E5%90%88%E8%A7%84%E4%B8%8E%E9%9A%90%E7%A7%81)
 
-[下载安装包](https://github.com/Napart7/Music-and-game/releases) · [使用说明](docs/使用说明.md) · [平台适配](docs/平台适配.md) · [技术方案](docs/技术方案.md)
+[下载安装包](https://github.com/Napart7/Music-and-game/releases) · [使用说明](docs/使用说明.md) · [平台适配](docs/平台适配.md) · [跨平台适配](docs/跨平台适配.md) · [技术方案](docs/技术方案.md)
 
 </div>
 
@@ -22,7 +22,7 @@ QQ 音乐 · 网易云音乐 · 酷狗音乐 · 汽水音乐 · Apple Music · S
 
 ## 这是什么
 
-GlassLyrics 是一个**独立透明置顶窗口**，把 DangoMusic 那种液态玻璃、逐字扫光、动态漂浮的歌词观感，覆盖到**任意 Windows 游戏**画面上——不注入游戏、不读内存、不抓音频，只用 Windows 自带的媒体接口读「谁在放歌」。
+GlassLyrics 是一个**独立透明置顶窗口**，把 DangoMusic 那种液态玻璃、逐字扫光、动态漂浮的歌词观感，覆盖到**任意游戏**画面上（Windows / macOS / Linux）——不注入游戏、不读内存、不抓音频，只用系统自带的媒体接口读「谁在放歌」。
 
 - **中央永远留空**：歌词在画面左右两侧，准星区域一根线都不挡
 - **自动贴合游戏窗口**：切窗口、改分辨率、换显示器，歌词跟着走（实测误差 1px）
@@ -52,6 +52,19 @@ GlassLyrics 是一个**独立透明置顶窗口**，把 DangoMusic 那种液态�
 </table>
 
 ---
+
+## 平台支持
+
+| | Windows 10/11 | macOS 12+ | Linux（X11） | Linux（Wayland） |
+|---|---|---|---|---|
+| 读歌 / 控播 | ✅ SMTC | ✅ Music / Spotify | ✅ MPRIS | ✅ MPRIS |
+| 跟随游戏窗口 | ✅ Win32 | ✅ 需辅助功能权限 | ✅ xdotool | ⬜ 系统限制，退整屏 |
+| 透明置顶 / 热键 | ✅ | ✅ | ✅ 需合成器 | 🟡 取决于桌面 |
+
+**Linux 依赖**：`playerctl`（读歌/控播）、`xdotool` + `xprop`（窗口跟随）。
+Debian/Ubuntu：`sudo apt install playerctl xdotool x11-utils`；缺少时其余功能照常，只是退回整屏。
+**macOS**：首次运行请允许「辅助功能」与「自动化」权限；未签名版本需右键「打开」。
+完整差异、验证步骤与限制见 **[docs/跨平台适配.md](docs/跨平台适配.md)**。
 
 ## 支持的播放器
 
@@ -202,7 +215,7 @@ GlassLyrics 不注入、不挂钩子、不读写游戏内存，对游戏而言�
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **读歌不碰播放器**：WinRT 调 `GlobalSystemMediaTransportControlsSessionManager`，系统级 API，零第三方依赖
+- **读歌不碰播放器**：Windows 用 WinRT SMTC、macOS 用 AppleScript、Linux 用 MPRIS（playerctl），全是系统级接口，无第三方 SDK
 - **贴合不碰游戏**：只读前台窗口的 HWND 矩形（`GetForegroundWindow` / `DwmGetWindowAttribute`），不打开游戏进程
 - **歌词不落盘**：运行时从公开接口拉文本，缓存在本机，仓库与安装包不含任何歌词数据
 
@@ -221,7 +234,9 @@ npm run dist                # 打包（NSIS 安装包 + 便携 exe → ../dist�
 **回归测试**（无需 Electron，headless Edge + CDP）：
 
 ```bash
-node tools/verify_providers.mjs    # 36 项：解析 / 清洗 / 平台识别 / 降级
+node tools/check_compliance.mjs   # 跨平台门禁：文件 / 敏感信息 / 语法 / .sh 换行符
+node tools/verify_backends.mjs    # 17 项：三端后端契约（媒体 / 窗口 / 路由）
+node tools/verify_providers.mjs   # 36 项：解析 / 清洗 / 平台识别 / 降级
 node tools/verify_lyrics.mjs       # 19 项：歌词引擎 / 缓存
 node tools/verify_menu.mjs         # 56 项：菜单 / 辉光 / 热键 / 拖动 / 漂浮 / 性能
 node tools/verify_autofit.mjs      # 22 项：窗口自适应
@@ -239,8 +254,9 @@ app/                 Electron 主程序
   main.js            主进程：窗口 / 热键 / SMTC / 自适应 / 点击穿透状态机
   lyrics.js          歌词引擎：源优先级 / 缓存 / 降级
   providers.js       QQ / 网易云(YRC) / 酷狗 / LRCLIB / iTunes / Spotify
+  backends/          平台后端：路由 + 统一契约 + win/mac/linux 脚本
   renderer/          渲染层（单文件：歌词 / 菜单 / 交互）
-  *.ps1              SMTC 桥接、播放控制、窗口探针
+  *.ps1              Windows：SMTC 桥接、播放控制、窗口探针
 docs/                文档与实机截图、自检 JSON
 tools/               回归测试与验证脚本
 ```
