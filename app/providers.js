@@ -14,7 +14,9 @@
 // required by their web API to return `yrc`, NOT an account credential. No MUSIC_U / token.
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36';
-const TIMEOUT_MS = 12000;
+// Lyric lookups are latency-sensitive: a provider that has not answered in 6s is useless to
+// a user waiting on screen. (Measured: lrclib.net can take 14s+ on CN networks.)
+const TIMEOUT_MS = 6000;
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -38,7 +40,8 @@ function fold(s) {
 
 async function request(url, opts = {}) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const budget = Number(opts.timeoutMs) || TIMEOUT_MS;
+  const timer = setTimeout(() => ctrl.abort(), budget);
   try {
     const res = await fetch(url, {
       ...opts,
@@ -298,6 +301,21 @@ async function netease(track) {
 
 /* --------------------------------------------------------------- LRCLIB */
 
+// lrclib.net is often unreachable/slow from mainland China. After two consecutive
+// failures we stop paying the full timeout for 10 minutes (2.5s probes instead), so a
+// dead network path never costs every song 8+ seconds.
+let lrclibFails = 0;
+let lrclibDownUntil = 0;
+
+function lrclibBudget() {
+  return Date.now() < lrclibDownUntil ? 2500 : 5000;
+}
+function lrclibFailed() {
+  lrclibFails++;
+  if (lrclibFails >= 2) lrclibDownUntil = Date.now() + 10 * 60 * 1000;
+}
+function lrclibOk() { lrclibFails = 0; lrclibDownUntil = 0; }
+
 async function lrclib(track) {
   const t = { title: cleanTitle(track.title), artist: cleanArtist(track.artist),
               album: cleanTitle(track.album), duration: Number(track.duration) || 0 };
@@ -319,14 +337,16 @@ async function lrclib(track) {
     const d = await request(`${'https://lrclib.net/api'}/get?${q({
       track_name: t.title, artist_name: t.artist, album_name: t.album,
       duration: t.duration ? Math.round(t.duration) : ''
-    })}`, { headers: { 'User-Agent': 'GlassLyrics/0.2 (personal desktop lyric overlay)', Accept: 'application/json' } });
+    })}`, { timeoutMs: lrclibBudget(),
+           headers: { 'User-Agent': 'GlassLyrics/0.2 (personal desktop lyric overlay)', Accept: 'application/json' } });
     const r = build(d, 'lrclib');
-    if (r) return r;
-  } catch { /* fall through to search */ }
+    if (r) { lrclibOk(); return r; }
+  } catch { lrclibFailed(); /* fall through to search */ }
 
   const arr = await request(`${'https://lrclib.net/api'}/search?${q({
     track_name: t.title, artist_name: t.artist
-  })}`, { headers: { 'User-Agent': 'GlassLyrics/0.2 (personal desktop lyric overlay)', Accept: 'application/json' } });
+  })}`, { timeoutMs: lrclibBudget(),
+         headers: { 'User-Agent': 'GlassLyrics/0.2 (personal desktop lyric overlay)', Accept: 'application/json' } });
   if (!Array.isArray(arr) || !arr.length) return null;
   const sorted = t.duration > 0
     ? [...arr].sort((x, y) => Math.abs((x.duration || 0) - t.duration) - Math.abs((y.duration || 0) - t.duration))

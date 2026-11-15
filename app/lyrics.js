@@ -110,14 +110,16 @@ async function fetchLyrics(track, cacheDir, opts = {}) {
   if (!order.length) return { ok: false, error: 'lyrics-disabled' };
 
   const hit = readCache(cacheDir, t, preferred);
-  if (hit) return { ...hit, platform, preferred, tried: [] };
+  if (hit) return { ...hit, platform, preferred, tried: [], elapsedMs: 0 };
+  const startedAt = Date.now();
 
   const tried = [];
   let lastErr = null;
-  // In auto mode prefer REAL word-level timing: a QQ Music session still tries Netease YRC
-  // before settling for line-level LRC. An explicit user choice is respected immediately.
+  // In auto mode prefer REAL word-level timing, but never let a slow provider block a fast
+  // one: all providers race in parallel, the first word-sync result wins immediately, and a
+  // short quality window decides when to settle for line-level lyrics.
+  // (Before v1.3 this was sequential: QQ session = wait 1.7s for QQ, then 0.2s for Netease.)
   const qualityFirst = preferred === 'auto';
-  let fallback = null;
   // Platforms whose own API exposes no artwork (Spotify/Apple/Qishui): borrow iTunes art.
   const enrichCover = async (result) => {
     if (result.cover) return result;
@@ -128,31 +130,68 @@ async function fetchLyrics(track, cacheDir, opts = {}) {
     } catch { /* best effort */ }
     return result;
   };
+  const finalize = async (result) => {
+    const out = await enrichCover(result);
+    writeCache(cacheDir, t, preferred, out);
+    return out;
+  };
+  // How long to wait for a word-sync result before accepting line-level lyrics.
+  const QUALITY_WINDOW_MS = 900;
+
+  if (qualityFirst) {
+    const raced = await new Promise((resolve) => {
+      const usable = [];
+      let settled = 0;
+      let done = false;
+      const finish = (r) => { if (!done) { done = true; clearTimeout(timer); resolve(r); } };
+      const timer = setTimeout(() => {
+        // Window elapsed: take the best line-level result if any, else keep waiting.
+        if (usable.length) finish(usable[0]);
+      }, QUALITY_WINDOW_MS);
+      order.forEach((name) => {
+        PROVIDERS[name](t)
+          .then((r) => {
+            const ok = !!(r && r.ok && r.lines.length);
+            tried.push({ provider: name, ok, wordSync: !!(r && r.wordSync) });
+            if (!ok) return;
+            const res = { ...r, platform, preferred, tried, cached: false };
+            usable.push(res);
+            if (r.wordSync) finish(res);      // real per-character timing: ship it now
+          })
+          .catch((e) => { tried.push({ provider: name, ok: false, error: e.message }); lastErr = e.message; })
+          .finally(() => {
+            settled++;
+            // All providers settled: take the first usable one (undefined → not-found).
+            if (settled === order.length) finish(usable[0]);
+          });
+      });
+    });
+    if (raced) {
+      const out = await finalize(raced);
+      out.elapsedMs = Date.now() - startedAt;
+      return out;
+    }
+    return { ok: false, error: lastErr || 'not-found', platform, preferred, tried,
+             title: t.title, artist: t.artist, elapsedMs: Date.now() - startedAt };
+  }
+
   for (const name of order) {
     try {
       const r = await PROVIDERS[name](t);
       const usable = !!(r && r.ok && r.lines.length);
       tried.push({ provider: name, ok: usable, wordSync: !!(r && r.wordSync) });
       if (usable) {
-        const result = await enrichCover({ ...r, platform, preferred, tried, cached: false });
-        if (!qualityFirst || r.wordSync) {
-          writeCache(cacheDir, t, preferred, result);
-          return result;
-        }
-        if (!fallback) fallback = result;    // keep the first usable line-level result
+        const out = await finalize({ ...r, platform, preferred, tried, cached: false });
+        out.elapsedMs = Date.now() - startedAt;
+        return out;
       }
     } catch (e) {
       tried.push({ provider: name, ok: false, error: e.message });
       lastErr = e.message;
     }
   }
-  if (fallback) {
-    fallback.tried = tried;
-    writeCache(cacheDir, t, preferred, fallback);
-    return fallback;
-  }
   return { ok: false, error: lastErr || 'not-found', platform, preferred, tried,
-           title: t.title, artist: t.artist };
+           title: t.title, artist: t.artist, elapsedMs: Date.now() - startedAt };
 }
 
 /** Index of the active line at position (binary search). */

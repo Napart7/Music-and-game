@@ -169,6 +169,9 @@ try {
   })})`);
   check('YRC 歌词被接受', applied.mode === 'real' && applied.wordSync === true, JSON.stringify(applied));
   check('状态显示真实逐字', /YRC 真实逐字/.test(await ev("document.getElementById('pWordSync').textContent")));
+  // The menu now pauses the lyric animation (it is invisible behind the panel), so the
+  // timeline is verified the way a user sees it: with the menu closed.
+  await ev("window.setPanel(false)");
   await ev("window.applyTrack({status:'PLAYING',position:10.4,duration:40})");
   await sleep(300);
   const st = await ev('window.getLyricState()');

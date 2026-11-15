@@ -250,8 +250,13 @@
   body[data-compact="1"] .faded { font-size: calc(clamp(11px, 1.1vw, 15px) * var(--ui-scale)); }
   body[data-compact="1"] .tr-line { font-size: clamp(10px, 1vw, 13px); }
   body[data-compact="1"] .panel { width: min(760px, 90vw); height: min(500px, 84vh); }
-  /* Declared last so an open menu wins over the dimmed (no game captured) state. */
-  body[data-menu-open="1"] .side { opacity: .12; }
+  /* Declared last so an open menu wins over the dimmed (no game captured) state.
+     opacity alone still PAINTS every glyph shadow behind the panel's backdrop blur; going
+     invisible skips the whole layer (~2x frame time on software raster / weak GPUs). */
+  body[data-menu-open="1"] .side {
+    opacity: 0; visibility: hidden;
+    transition: opacity .25s ease, visibility 0s linear .25s;
+  }
 
   /* ---- free lyric placement: drag edit mode ---- */
   body[data-edit="1"] .side { opacity: 1 !important; pointer-events: auto; cursor: grab;
@@ -565,6 +570,7 @@ let demoStart = performance.now(), layoutIdx = 0;
 let cfg = {}, lastFit = null;
 /* perf: cached glyph elements + last written CSS vars so unchanged values are never re-written */
 let gEls = [], lastP = [], lastPop = [], lastWx = [], lastWy = [], curLineEl = null, lastSlamQ = null, lastT = 0;
+let frameAcc = 0;   // time-budget accumulator: gives an even ~60fps on 60/144/240Hz panels
 window.__w = { p: 0, pop: 0, wx: 0, wy: 0, slam: 0, frames: 0 };   // style-write counters (regression evidence)
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -745,17 +751,25 @@ document.querySelectorAll('.side').forEach(side => {
     drag = { which: side.classList.contains('left') ? 'left' : 'right' };
   });
 });
+let dragRaf = 0, dragPoint = null;
 window.addEventListener('mousemove', (e) => {
   if (!drag) return;
-  const w = window.innerWidth, h = window.innerHeight;
-  const xpct = Math.min(80, Math.max(0, +(e.clientX / w * 100).toFixed(2)));
-  const ypct = Math.min(95, Math.max(5, +(e.clientY / h * 100).toFixed(2)));
-  const root = document.documentElement.style;
-  if (drag.which === 'left') {
-    root.setProperty('--lx', xpct + '%'); root.setProperty('--ly', ypct + '%');
-  } else {
-    root.setProperty('--rx', +(100 - xpct).toFixed(2) + '%'); root.setProperty('--ry', ypct + '%');
-  }
+  dragPoint = { x: e.clientX, y: e.clientY };
+  if (dragRaf) return;
+  dragRaf = requestAnimationFrame(() => {
+    dragRaf = 0;
+    if (!drag || !dragPoint) return;
+    const { x, y } = dragPoint; dragPoint = null;
+    const w = window.innerWidth, h = window.innerHeight;
+    const xpct = Math.min(80, Math.max(0, +(x / w * 100).toFixed(2)));
+    const ypct = Math.min(95, Math.max(5, +(y / h * 100).toFixed(2)));
+    const root = document.documentElement.style;
+    if (drag.which === 'left') {
+      root.setProperty('--lx', xpct + '%'); root.setProperty('--ly', ypct + '%');
+    } else {
+      root.setProperty('--rx', +(100 - xpct).toFixed(2) + '%'); root.setProperty('--ry', ypct + '%');
+    }
+  });
 });
 window.addEventListener('mouseup', () => {
   if (!drag) return;
@@ -776,6 +790,12 @@ function resetLyricPos() {
 window.resetLyricPos = resetLyricPos;
 
 /* Replace demo lines with real lyrics. `words` (when present) is the true YRC timeline. */
+window.showLyricsLoading = function (d) {
+  const txt = '正在加载歌词…' + (d && d.title ? '（' + d.title + '）' : '');
+  const a = $('pLyricSrc'); if (a) a.textContent = txt;
+  const b = $('pLyricSrc2'); if (b) b.textContent = txt;
+};
+
 window.applyLyrics = function (r) {
   const src = $('pLyricSrc');
   const lab = document.querySelector('.side.right .side-label');
@@ -942,12 +962,21 @@ function tick(now) {
   requestAnimationFrame(tick);
   // Hidden overlay: the window is win.hide()n but backgroundThrottling is off, so rAF would
   // keep running at full speed. Skip all work (and all style writes) while invisible.
-  if (!layerVisible) return;
-  // Frame cap: high refresh monitors used to burn CPU at 144+ fps for no visual gain.
-  // ~60 fps normally, ~30 fps in low-end mode.
-  const capMs = cfg.perfLow ? 33.4 : 16.4;
-  if (now - lastT < capMs - 1.2) return;
+  // The main menu also pauses the lyric animation: the user is reading the panel, and its
+  // backdrop blur would otherwise fight the per-glyph shadows for GPU time.
+  if (!layerVisible || document.body.dataset.menuOpen === '1') {
+    lastT = 0; frameAcc = 0;
+    return;
+  }
+  // Time-budget frame cap. A plain `dt < 16.4ms` gate runs at ~48fps on 144Hz panels;
+  // accumulating the remainder keeps a steady 60 (or 30 in low-end mode) everywhere.
+  if (!lastT) { lastT = now; return; }
+  const dt = now - lastT;
   lastT = now;
+  frameAcc = Math.min(frameAcc + dt, 120);
+  const budget = cfg.perfLow ? 33.4 : 16.7;
+  if (frameAcc < budget - 1) return;
+  frameAcc = Math.max(0, frameAcc - budget);
   window.__w.frames++;
   const hasTimeline = state.duration > 0;
   const basePos = hasTimeline
@@ -1240,6 +1269,7 @@ if (window.glass) {
   window.glass.onConfig(c => window.syncConfig(c));
   window.glass.onAutoFit(d => window.applyAutoFit(d));
   window.glass.onLyrics(r => window.applyLyrics(r));
+  window.glass.onLyricsLoading(d => window.showLyricsLoading(d));
   window.glass.onLyricOffset(ms => window.setLyricOffset(ms));
   window.glass.onEditMode(on => window.setEditMode(on));
   window.glass.onCycleLayout(() => {

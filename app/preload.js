@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('glass', {
   onCycleLayout: (cb) => ipcRenderer.on('cycle-layout', () => cb()),
   onAutoFit: (cb) => ipcRenderer.on('auto-fit', (_e, d) => cb(d)),
   onLyrics: (cb) => ipcRenderer.on('lyrics', (_e, d) => cb(d)),
+  onLyricsLoading: (cb) => ipcRenderer.on('lyrics-loading', (_e, d) => cb(d)),
   onLyricOffset: (cb) => ipcRenderer.on('lyric-offset', (_e, v) => cb(v)),
   refreshLyrics: () => ipcRenderer.send('refresh-lyrics'),
   getLyrics: () => ipcRenderer.invoke('get-lyrics'),

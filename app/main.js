@@ -703,7 +703,8 @@ function maybeSmoke(d) {
         lyrics: lastLyrics ? { ok: lastLyrics.ok, source: lastLyrics.source,
           provider: lastLyrics.provider, wordSync: !!lastLyrics.wordSync,
           lines: (lastLyrics.lines || []).length, synced: lastLyrics.synced,
-          cached: lastLyrics.cached, error: lastLyrics.error || null } : null
+          cached: lastLyrics.cached, elapsedMs: lastLyrics.elapsedMs || 0,
+          error: lastLyrics.error || null } : null
       };
       const target = process.env.GL_SMOKE_OUT || path.join(USER_DIR, 'app-smoke.json');
       try {
@@ -738,6 +739,8 @@ function ensureLyrics(d) {
   lastTrackKey = key;
   lyricsRequestKey = key;
   lyricsInFlight = true;
+  // Instant feedback: the old lyrics belong to the previous song — tell the UI we're fetching.
+  if (win && !win.isDestroyed()) win.webContents.send('lyrics-loading', { title: d.title, artist: d.artist });
 
   lyricsEngine.fetchLyrics({
     title: d.title, artist: d.artist, album: d.album, duration: d.duration, app: d.app
@@ -748,13 +751,33 @@ function ensureLyrics(d) {
     if (lyricsRequestKey !== key) return;  // user skipped to another track; drop stale result
     lastLyrics = r;
     if (win && !win.isDestroyed()) win.webContents.send('lyrics', { ...r, offsetMs: config.lyricOffsetMs });
-    console.log('[lyrics]', r.ok ? `${r.provider} · ${r.source} · ${r.lines.length} lines · wordSync=${r.wordSync}` : r.error);
+    console.log('[lyrics]', r.ok
+      ? `${r.provider} · ${r.source} · ${r.lines.length} lines · wordSync=${r.wordSync} · ${r.elapsedMs || 0}ms`
+      : `${r.error} (${r.elapsedMs || 0}ms)`);
   }).catch((e) => {
     console.error('[lyrics]', e);
     if (win && !win.isDestroyed()) win.webContents.send('lyrics', { ok: false, error: e.message });
   }).finally(() => {
     lyricsInFlight = false;
   });
+}
+
+/** Pre-open DNS+TLS to the lyric hosts so the first song of a session is not 200-400ms
+ *  slower than the rest. Failures are silent: this is only a latency optimisation. */
+function warmUpLyricHosts() {
+  const hosts = [
+    'https://c.y.qq.com/', 'https://music.163.com/', 'https://mobiles.kugou.com/',
+    'https://itunes.apple.com/'
+  ];
+  setTimeout(() => {
+    for (const u of hosts) {
+      try {
+        const ctrl = new AbortController();
+        setTimeout(() => ctrl.abort(), 4000);
+        fetch(u, { method: 'HEAD', signal: ctrl.signal }).catch(() => {});
+      } catch { /* ignore */ }
+    }
+  }, 2500);
 }
 
 function refreshLyrics() {
@@ -916,6 +939,7 @@ if (!gotLock) {
     }
     // Heartbeat: alt-tab / focus churn can silently drop the click-through flag.
     setInterval(ensureClickThrough, 2000);
+    warmUpLyricHosts();
     console.log('[app] ready', TITLE);
   });
 }

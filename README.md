@@ -14,7 +14,7 @@ QQ 音乐 · 网易云音乐 · 酷狗音乐 · 汽水音乐 · Apple Music · S
 [![Electron](https://img.shields.io/badge/Electron-45-2f6bff?style=flat-square&logo=electron&logoColor=white)](#)
 [![No Injection](https://img.shields.io/badge/No%20Injection-%E4%B8%8D%E6%B3%A8%E5%85%A5%E8%BF%9B%E7%A8%8B-2ecc9a?style=flat-square)](#%E5%90%88%E8%A7%84%E4%B8%8E%E9%9A%90%E7%A7%81)
 
-[下载安装包](https://github.com/Napart7/Music-and-game/releases) · [使用说明](docs/使用说明.md) · [平台适配](docs/平台适配.md) · [跨平台适配](docs/跨平台适配.md) · [技术方案](docs/技术方案.md)
+[下载安装包](https://github.com/Napart7/Music-and-game/releases) · [使用说明](docs/使用说明.md) · [平台适配](docs/平台适配.md) · [跨平台适配](docs/跨平台适配.md) · [性能自检](docs/性能自检-v1.3.md)
 
 </div>
 
@@ -123,10 +123,10 @@ Debian/Ubuntu：`sudo apt install playerctl xdotool x11-utils`；缺少时其余
 </td><td valign="top">
 
 **性能**
-- 暂停零重绘
-- 扫光量化（写入 -97%）
-- 60 / 30 帧上限
-- 低配模式（辉光减层）
+- 切歌出歌词 221ms（并行竞速）
+- 全场景 60fps / 0 掉帧
+- 暂停零重绘、扫光量化
+- 低配模式（30 帧 + 辉光减层）
 
 </td><td valign="top">
 
