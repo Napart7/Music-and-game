@@ -1,5 +1,5 @@
 // P1 regression: lyric parsing (pure Node) + renderer timeline behaviour (headless Edge CDP).
-import { resolveEdge, toFileUrl, profileDir } from './cdp-env.mjs';
+import { resolveEdge, toFileUrl, profileDir, CHROMIUM_ARGS } from './cdp-env.mjs';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { createRequire } from 'node:module';
@@ -38,10 +38,14 @@ check('trackKey 大小写与噪声无关',
 
 // --- renderer ---
 const proc = spawn(EDGE, [
-  '--headless=new', '--disable-gpu', '--no-sandbox', '--hide-scrollbars',
+  ...CHROMIUM_ARGS,
   `--remote-debugging-port=${PORT}`, `--user-data-dir=${PROFILE}`,
   '--window-size=1600,1000', 'about:blank'
-], { stdio: 'ignore', windowsHide: true });
+], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+// Surface launch failures (missing libs / container issues) instead of a bare "CDP not ready".
+let browserErr = '';
+proc.stderr.on('data', (d) => { browserErr += d.toString(); if (browserErr.length > 4000) browserErr = browserErr.slice(-4000); });
+proc.on('exit', (code) => { if (code) console.error('[browser] exited', code, browserErr.slice(-600)); });
 
 let ws = null;
 const pending = new Map();
@@ -64,7 +68,7 @@ async function ev(expr) {
 
 try {
   let target = null;
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 100; i++) {
     try {
       const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
       target = list.find(t => t.type === 'page');
@@ -88,7 +92,7 @@ try {
   await send('Page.navigate', { url: FILE_URL });
 
   let ready = 0;
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 100; i++) {
     ready = await ev("document.querySelectorAll('#curGlyphs .glyph').length").catch(() => 0);
     if (ready > 0) break;
     await sleep(150);

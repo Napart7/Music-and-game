@@ -14,6 +14,21 @@ export function toFileUrl(p) {
   return 'file://' + (abs.startsWith('/') ? '' : '/') + abs;
 }
 
+/** Headless flags that work on desktop AND inside CI containers (small /dev/shm, no dbus).
+ *  Without --disable-dev-shm-usage Chromium crashes on GitHub's Linux runners. */
+export const CHROMIUM_ARGS = [
+  '--headless=new',
+  '--disable-gpu',
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage',
+  '--no-zygote',
+  '--no-first-run',
+  '--disable-background-networking',
+  '--disable-features=Translate,MediaRouter',
+  '--hide-scrollbars'
+];
+
 const CANDIDATES = [
   process.env.EDGE_PATH,
   process.env.CHROME_PATH,
@@ -24,8 +39,11 @@ const CANDIDATES = [
   '/usr/bin/microsoft-edge',
   '/usr/bin/microsoft-edge-stable',
   '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
+  '/opt/google/chrome/chrome',
   '/usr/bin/chromium',
-  '/usr/bin/chromium-browser'
+  '/usr/bin/chromium-browser',
+  '/usr/lib/chromium/chromium'
 ].filter(Boolean);
 
 /** First existing Chromium-based browser; falls back to `msedge` on PATH. */
