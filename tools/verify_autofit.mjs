@@ -2,10 +2,12 @@
 // Loads app/renderer/index.html in headless Edge and calls the exposed fit functions directly.
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import path from 'node:path';
+import { ROOT, resolveEdge, toFileUrl, profileDir } from './cdp-env.mjs';
 
-const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-const FILE_URL = 'file:///C:/Users/Napart/WorkBuddy/2026-11-14-20-17-39/GameLyricOverlay/app/renderer/index.html';
-const PROFILE = 'C:/Users/Napart/AppData/Local/Temp/glasslyrics/cdp-fit-profile';
+const EDGE = resolveEdge();
+const FILE_URL = toFileUrl(path.join(ROOT, 'app', 'renderer', 'index.html'));
+const PROFILE = profileDir('fit');
 const PORT = 9334;
 
 const proc = spawn(EDGE, [

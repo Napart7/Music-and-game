@@ -1,14 +1,15 @@
 // Regression for the liquid-glass main menu, glyph-emitted glow and real word-level timing.
 // Runs app/renderer/index.html in headless Edge via CDP; no Electron and no network needed.
+import { resolveEdge, toFileUrl, profileDir } from './cdp-env.mjs';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-const FILE_URL = 'file:///' + path.join(ROOT, 'app', 'renderer', 'index.html').replace(/\\/g, '/');
-const PROFILE = 'C:/Users/Napart/AppData/Local/Temp/glasslyrics/cdp-menu-profile';
+const EDGE = resolveEdge();
+const FILE_URL = toFileUrl(path.join(ROOT, 'app', 'renderer', 'index.html'));
+const PROFILE = profileDir('menu');
 const PORT = 9336;
 
 const proc = spawn(EDGE, [

@@ -1,4 +1,5 @@
 // P1 regression: lyric parsing (pure Node) + renderer timeline behaviour (headless Edge CDP).
+import { resolveEdge, toFileUrl, profileDir } from './cdp-env.mjs';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { createRequire } from 'node:module';
@@ -9,9 +10,9 @@ const require = createRequire(import.meta.url);
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const L = require(path.join(ROOT, 'app', 'lyrics.js'));
 
-const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-const FILE_URL = 'file:///' + path.join(ROOT, 'app', 'renderer', 'index.html').replace(/\\/g, '/');
-const PROFILE = 'C:/Users/Napart/AppData/Local/Temp/glasslyrics/cdp-lyrics-profile';
+const EDGE = resolveEdge();
+const FILE_URL = toFileUrl(path.join(ROOT, 'app', 'renderer', 'index.html'));
+const PROFILE = profileDir('lyrics');
 const PORT = 9335;
 
 const checks = [];
