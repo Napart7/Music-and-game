@@ -88,6 +88,7 @@ const NON_GAME_PROCESSES = new Set([
   'vivaldi', 'powershell', 'pwsh', 'cmd', 'windowsterminal', 'conhost', 'notepad', 'qqmusic',
   'cloudmusic', 'wechat', 'weixin', 'qq', 'discord', 'telegram', 'slack', 'feishu', 'dingtalk',
   'wps', 'et', 'wpp', 'excel', 'winword', 'powerpnt', 'outlook', 'obs64', 'spotify',
+  'music', 'applemusic', 'itunes', 'microsoftmediaplayer',
   'steamwebhelper', 'electron', 'glasslyrics', 'devenv', 'idea64', 'pycharm64', 'webstorm64',
   'sublime_text', 'applicationframehost', 'searchapp', 'shellexperiencehost', 'taskmgr',
   'regedit', 'mmc', 'chrome_proxy', 'zalo', 'tim'
@@ -126,6 +127,9 @@ let lastLyrics = null;
 let lastSmtc = null;
 let currentPlatform = 'other';
 let lastBackendError = '';
+let lastProbeError = '';
+let bridgeRestarts = 0;
+let probeRestarts = 0;
 const hotkeys = {};
 
 let config = loadConfig();
@@ -203,6 +207,10 @@ function saveConfig() {
   try {
     fs.mkdirSync(USER_DIR, { recursive: true });
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+    // config.json may hold the user's Spotify client secret — keep it owner-only on POSIX.
+    if (process.platform !== 'win32') {
+      try { fs.chmodSync(CONFIG_FILE, 0o600); } catch { /* best effort */ }
+    }
   } catch (e) {
     console.error('[config] save failed', e);
   }
@@ -277,6 +285,8 @@ function createWindow() {
     focusable: false,
     hasShadow: false,
     backgroundColor: '#00000000',
+    // Must start visible: a hidden/occluded window makes Chromium suspend rAF, which freezes
+    // the lyric timeline. focusable:false keeps the game focused without hiding the window.
     show: true,
     webPreferences: {
       preload: path.join(ROOT, 'preload.js'),
@@ -306,7 +316,13 @@ function createWindow() {
   win.webContents.on('did-finish-load', () => {
     loaded = true;
     win.webContents.send('config', config);
+    try { win.showInactive(); } catch { /* fall back below */ }
+    applyClickThrough(true);
   });
+  // Safety net: if the renderer fails to load, still show the layer (user can fix via menu).
+  setTimeout(() => {
+    if (win && !win.isDestroyed() && !win.isVisible()) win.showInactive();
+  }, 4000);
 }
 
 /* ---------------- click-through state machine ----------------
@@ -355,7 +371,7 @@ function setLayerVisible(on) {
   if (layerVisible === on) return;
   layerVisible = on;
   if (!win || win.isDestroyed()) return;
-  if (layerVisible) win.show();
+  if (layerVisible) win.showInactive();
   else win.hide();
   win.webContents.send('visible', layerVisible);
   // A freshly shown window may come back as clickable — re-assert transparency.
@@ -453,14 +469,28 @@ function createTray() {
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAJUlEQVR42u3OMQEAAAgDINc/9K3hWGSBVsQAAAABAAAAAAAKALgKwHcAAH9gQAAAABJRU5ErkJggg=='
     );
   }
-  tray = new Tray(img);
-  rebuildTray();
+  try {
+    tray = new Tray(img);
+    rebuildTray();
+  } catch (e) {
+    // Linux desktops without AppIndicator support reject Tray creation. The overlay itself
+    // must keep working (hotkeys still toggle the panel), so degrade instead of crashing.
+    console.error('[tray] unavailable on this desktop:', e.message);
+    tray = null;
+  }
 }
 
 /* ---------------- auto-fit: follow the foreground game window ---------------- */
 
+let lastFitPayload = '';
 function broadcastFit() {
-  if (win && !win.isDestroyed()) win.webContents.send('auto-fit', autoFitState);
+  // The probe fires every 400ms; sending an identical object would force a style pass in
+  // the renderer for nothing. Compare first, send only on real change.
+  const payload = JSON.stringify(autoFitState);
+  if (payload !== lastFitPayload) {
+    lastFitPayload = payload;
+    if (win && !win.isDestroyed()) win.webContents.send('auto-fit', autoFitState);
+  }
   // One-shot evidence for tools/verify_window_fit.py, written on the first probe result
   // regardless of whether a game was captured (so a failure is diagnosable too).
   if (!fitSmokeDone && loaded) {
@@ -578,15 +608,26 @@ function startWindowProbe() {
       buf = buf.slice(i + 1);
       const d = parseWindowLine(line);
       if (!d) continue;
-      if (d.ok && d.rect) applyWindowFit(d);
-      else if (d.error && d.error !== 'wayland-no-window-api') console.error('[winprobe]', d.error);
+      if (d.ok && d.rect) {
+        probeRestarts = 0;
+        lastProbeError = '';
+        applyWindowFit(d);
+      } else if (d.error && d.error !== 'wayland-no-window-api' && d.error !== lastProbeError) {
+        // Permission / missing-dependency errors repeat every 400ms — log once.
+        lastProbeError = d.error;
+        console.error('[winprobe]', d.error);
+      }
     }
   });
   windowProbe.stderr.on('data', (d) => console.error('[winprobe]', d.toString().trim()));
   windowProbe.on('exit', (code) => {
     console.log('[winprobe] exit', code);
     windowProbe = null;
-    if (!quitting) setTimeout(startWindowProbe, 1500);
+    if (quitting) return;
+    // Backoff: a script that crashes immediately must not restart 40x/second.
+    const delay = Math.min(15000, 1500 * Math.pow(2, Math.min(probeRestarts, 3)));
+    probeRestarts++;
+    setTimeout(startWindowProbe, delay);
   });
 }
 
@@ -745,6 +786,7 @@ function startBridge() {
         continue;
       }
       lastBackendError = '';
+      bridgeRestarts = 0;
       // Test hook: pin a known track so the real-lyrics pipeline can be verified deterministically.
       const forcedTrack = String(process.env.GL_FORCE_TRACK || '');
       if (forcedTrack && d.active) {
@@ -761,7 +803,10 @@ function startBridge() {
   bridge.on('exit', (code) => {
     console.log('[smtc] bridge exit', code);
     bridge = null;
-    if (!quitting) setTimeout(startBridge, 1500);
+    if (quitting) return;
+    const delay = Math.min(15000, 1500 * Math.pow(2, Math.min(bridgeRestarts, 3)));
+    bridgeRestarts++;
+    setTimeout(startBridge, delay);
   });
 }
 
@@ -790,7 +835,12 @@ ipcMain.handle('search-songs', async (_e, { query, platform }) => {
       return { ok: false, error: 'spotify-needs-credentials', list: [] };
     }
     return { ok: true, list };
-  } catch (e) { return { ok: false, error: e.message, list: [] }; }
+  } catch (e) {
+    // 401/403 from Spotify means wrong/expired credentials — tell the user what to fix.
+    const msg = String(e.message || '');
+    const error = /spotify-token-(401|403)/.test(msg) ? 'spotify-bad-credentials' : msg;
+    return { ok: false, error, list: [] };
+  }
 });
 // There is no public "play this exact song" API. We try the client's own URL scheme to
 // open its search page, and ALWAYS copy the song name so the user can paste it manually.

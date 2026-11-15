@@ -38,8 +38,30 @@ jobs:
           node tools/verify_autofit.mjs
           node tools/verify_preview.mjs
 
+  # Same UI regressions on Linux: proves the renderer (layout / fonts / animations)
+  # behaves identically off Windows. Uses the preinstalled Chrome via tools/cdp-env.mjs.
+  verify-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Ensure a Chromium-based browser
+        run: |
+          if command -v google-chrome >/dev/null; then echo "google-chrome found"; else
+            sudo apt-get update -qq && sudo apt-get install -y chromium-browser || true
+          fi
+          node tools/check_compliance.mjs
+          node tools/verify_backends.mjs
+      - name: UI regressions on Linux
+        run: |
+          node tools/verify_menu.mjs
+          node tools/verify_autofit.mjs
+          node tools/verify_preview.mjs
+
   build:
-    needs: verify
+    needs: [verify, verify-linux]
     strategy:
       fail-fast: false
       matrix:

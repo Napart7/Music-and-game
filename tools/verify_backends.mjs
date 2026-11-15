@@ -66,6 +66,20 @@ await check('无播放时 active=false 且不崩溃', () => {
   assert.equal(d.status, 'NONE');
 });
 
+await check('未知状态不会被当成播放中', () => {
+  const d = parse.parseMediaLine(JSON.stringify({ ok: true, status: 'BOGUS', title: 'x' }));
+  assert.equal(d.status, 'UNKNOWN');
+  assert.equal(d.active, false);
+  assert.equal(d.statusValue, -1);
+});
+
+await check('coverUrl 归一为 cover（mac/Linux 封面链路）', () => {
+  const d = parse.parseMediaLine(JSON.stringify({ ok: true, status: 'PLAYING',
+    coverUrl: 'https://i.scdn.co/image/abc' }));
+  assert.equal(d.cover, 'https://i.scdn.co/image/abc');
+  assert.equal(d.hasCover, true);
+});
+
 await check('依赖缺失错误行被识别', () => {
   const d = parse.parseMediaLine(JSON.stringify({ ok: false, error: 'playerctl-missing' }));
   assert.equal(d.ok, false);

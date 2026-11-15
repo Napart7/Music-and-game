@@ -2,6 +2,9 @@
 # Linux media backend: MPRIS over D-Bus, via playerctl (works with Spotify, Chromium,
 # VLC, mpv, Rhythmbox, Amberol, …). Emits ONE JSON object per line every 500 ms.
 # Dependency: playerctl (apt install playerctl / dnf install playerctl / pacman -S playerctl)
+#
+# Performance: `playerctl status` + one `playerctl metadata` + one awk = 3 child processes
+# per tick; JSON escaping uses bash built-ins (no sed/tr forks).
 set -u
 
 if ! command -v playerctl >/dev/null 2>&1; then
@@ -11,11 +14,12 @@ if ! command -v playerctl >/dev/null 2>&1; then
 fi
 
 json_escape() {
-  printf '%s' "$1" | tr -d '\r\n' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
-}
-
-to_seconds() {
-  awk -v us="${1:-0}" 'BEGIN { if (us ~ /^[0-9]+$/) printf "%.3f", us / 1000000; else printf "0" }'
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\r'/}"
+  s="${s//$'\n'/}"
+  printf '%s' "$s"
 }
 
 emit_none() {
@@ -38,12 +42,15 @@ while true; do
 
   # playerctl prints one line per requested field, '|' separated by our format string.
   line=$(playerctl metadata --format \
-    '{{playerName}}|{{artist}}|{{title}}|{{album}}|{{position}}|{{mpris:length}}|{{mpris:artUrl}}|{{status}}' \
+    '{{playerName}}|{{artist}}|{{title}}|{{album}}|{{position}}|{{mpris:length}}|{{mpris:artUrl}}' \
     2>/dev/null | head -n 1) || line=""
-  IFS='|' read -r player artist title album pos_us len_us art_url _rest <<< "$line"
+  IFS='|' read -r player artist title album pos_us len_us art_url <<< "$line"
 
-  position=$(to_seconds "${pos_us:-0}")
-  duration=$(to_seconds "${len_us:-0}")
+  # One awk call for both values (was one per value).
+  read -r position duration <<< "$(awk -v p="${pos_us:-0}" -v l="${len_us:-0}" 'BEGIN {
+    printf "%s %s\n", (p ~ /^[0-9]+$/ ? sprintf("%.3f", p / 1000000) : "0"),
+                      (l ~ /^[0-9]+$/ ? sprintf("%.3f", l / 1000000) : "0")
+  }')"
 
   cover="null"
   has_cover="false"
@@ -52,9 +59,11 @@ while true; do
     has_cover="true"
   fi
 
+  active="true"
+  [ "$status" = "STOPPED" ] && active="false"
+
   printf '{"ok":true,"active":%s,"status":"%s","statusValue":%s,"app":"%s","player":"%s","title":"%s","artist":"%s","album":"%s","position":%s,"duration":%s,"hasCover":%s,"coverUrl":%s}\n' \
-    "$([ "$status" = "STOPPED" ] && echo false || echo true)" \
-    "$status" "$sval" \
+    "$active" "$status" "$sval" \
     "$(json_escape "$player")" "$(json_escape "$player")" \
     "$(json_escape "$title")" "$(json_escape "$artist")" "$(json_escape "$album")" \
     "$position" "$duration" "$has_cover" "$cover"

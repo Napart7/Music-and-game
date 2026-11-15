@@ -99,7 +99,9 @@ function backendFor(platform, resolve) {
 
 /** Tray icon format differs per OS: .ico on Windows, .png elsewhere. */
 function trayIconName(platform) {
-  return platform === 'win32' ? 'assets/icon.ico' : 'assets/icon.png';
+  // Windows needs .ico; macOS/Linux take PNG. Use the 1024px asset so the tray/menu bar
+  // icon stays sharp on HiDPI displays.
+  return platform === 'win32' ? 'assets/icon.ico' : 'assets/icon-512.png';
 }
 
 module.exports = { backendFor, trayIconName, path };

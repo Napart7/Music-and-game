@@ -5,6 +5,17 @@ ObjC.import('Foundation');
 
 function sleepMs(ms) { $.NSThread.sleepForTimeInterval(ms / 1000); }
 
+function emit(obj) {
+  var json = JSON.stringify(obj);
+  try {
+    var str = $.NSString.alloc.initWithUTF8String(json + '\n');
+    var data = str.dataUsingEncoding($.NSUTF8StringEncoding);
+    $.NSFileHandle.fileHandleWithStandardOutput.writeData(data);
+  } catch (e) {
+    console.log(json);
+  }
+}
+
 function probe() {
   var se;
   try { se = Application('System Events'); } catch (e) {
@@ -51,6 +62,6 @@ while (true) {
   try { out = probe(); } catch (e) {
     out = { ok: false, error: 'jxa:' + (e && e.message ? e.message : 'unknown') };
   }
-  console.log(JSON.stringify(out));
+  emit(out);
   sleepMs(400);
 }

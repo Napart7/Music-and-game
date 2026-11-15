@@ -15,13 +15,16 @@ function num(v) {
 function normalizeMedia(d, platformId) {
   if (!d || typeof d !== 'object') return null;
   const rawStatus = String(d.status || (d.active ? 'PLAYING' : 'NONE')).toUpperCase();
-  const status = STATUS_VALUE[rawStatus] === undefined && rawStatus !== 'NONE' ? 'UNKNOWN' : rawStatus;
-  const statusValue = Number.isFinite(Number(d.statusValue))
-    ? Number(d.statusValue)
-    : (STATUS_VALUE[status] ?? -1);
+  // Unknown/garbage statuses must NOT count as "playing", otherwise a broken backend
+  // would keep the lyric engine fetching for a track that is not really playing.
+  const known = Object.prototype.hasOwnProperty.call(STATUS_VALUE, rawStatus);
+  const status = known ? rawStatus : 'UNKNOWN';
+  const statusValue = known
+    ? (Number.isFinite(Number(d.statusValue)) ? Number(d.statusValue) : STATUS_VALUE[status])
+    : -1;
   return {
     ok: d.ok !== false,
-    active: d.active !== false && status !== 'NONE' && status !== 'CLOSED',
+    active: d.active !== false && known && status !== 'NONE' && status !== 'CLOSED',
     app: String(d.app || d.player || ''),
     title: String(d.title || ''),
     artist: String(d.artist || ''),

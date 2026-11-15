@@ -20,7 +20,8 @@
     --game-h: 100vh;
   }
   html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
-  body { font-family: system-ui, -apple-system, "Microsoft YaHei", "PingFang SC", sans-serif;
+  body { font-family: system-ui, -apple-system, "Microsoft YaHei", "PingFang SC",
+    "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", sans-serif;
     color: #f2f6ff; -webkit-font-smoothing: antialiased; user-select: none; }
 
   /* ---------------- on-screen lyrics (left / right, centre stays clear) ---------------- */
@@ -558,6 +559,7 @@ const PLATFORM_CN = { qqmusic: 'QQ 音乐', netease: '网易云音乐', kugou: '
 const TINTS = { white: '255,255,255', pink: '255,97,158', blue: '82,168,255', amber: '255,189,77' };
 const LAYOUTS = ['split', 'center', 'left-only', 'right-only'];
 let state = { title: '—', artist: '—', album: '—', status: 'CONNECTING', position: 0, duration: 0, app: '', recvAt: 0 };
+let lastSmtcCover = '';
 let lastKey = -1, charStarts = [], charEnds = [], charMode = 'normalized', popAt = [], lineAt = 0, lastWig = -1;
 let demoStart = performance.now(), layoutIdx = 0;
 let cfg = {}, lastFit = null;
@@ -679,24 +681,31 @@ function indexAtLocal(times, pos) {
 }
 function renderLine_OLD_removed() { /* replaced by the floating-row renderer above */ }
 
+function setText(id, v) {
+  const el = $(id);
+  if (el && el.textContent !== v) el.textContent = v;
+}
 window.applyTrack = function (d) {
   if (!d) return;
   state = Object.assign({}, state, d, { recvAt: performance.now() });
   const st = $('status'); if (st) st.textContent = label(state.status);  // legacy hook, HUD removed
-  $('pTitle').textContent = state.title || '—';
-  $('pArtist').textContent = [state.artist, state.album].filter(Boolean).join(' / ') || '—';
-  $('pStatus').textContent = label(state.status);
-  $('pPos').textContent = fmt(state.position) + ' / ' + fmt(state.duration);
-  $('clock').textContent = fmt(state.position) + ' / ' + fmt(state.duration);
-  $('pBar').style.width = (state.duration > 0 ? clamp(state.position / state.duration * 100, 0, 100) : 0) + '%';
+  setText('pTitle', state.title || '—');
+  setText('pArtist', [state.artist, state.album].filter(Boolean).join(' / ') || '—');
+  setText('pStatus', label(state.status));
+  const posText = fmt(state.position) + ' / ' + fmt(state.duration);
+  setText('pPos', posText);
+  setText('clock', posText);
+  const bar = $('pBar');
+  const pct = (state.duration > 0 ? clamp(state.position / state.duration * 100, 0, 100) : 0) + '%';
+  if (bar && bar.style.width !== pct) bar.style.width = pct;
   const p = state.platform || d.platform || 'other';
-  $('pPlatform').textContent = PLATFORM_CN[p] || PLATFORM_CN.other;
-  $('pApp').textContent = state.app || '—';
+  setText('pPlatform', PLATFORM_CN[p] || PLATFORM_CN.other);
+  setText('pApp', state.app || '—');
   if (d.active === false) setCover(null);   // nothing playing → placeholder
-  // macOS (Spotify artworkUrl) / Linux (MPRIS artUrl) ship a cover URL directly.
-  if (d.coverUrl && d.coverUrl !== lastSmtcCover) { lastSmtcCover = d.coverUrl; setCover(d.coverUrl); }
+  // macOS (Spotify artwork) / Linux (MPRIS artUrl): the backend normaliser exposes the
+  // cover URL as `cover`, so read that — not the raw `coverUrl` field.
+  if (d.cover && d.cover !== lastSmtcCover) { lastSmtcCover = d.cover; setCover(d.cover); }
 };
-let lastSmtcCover = '';
 function setCover(url) {
   const cov = $('pCover'), ph = $('pCoverPh');
   if (!cov || !ph) return;
@@ -831,7 +840,12 @@ function setTab(name) {
 }
 window.setTab = setTab;
 
-window.setVisible = function (on) { document.body.style.display = on ? '' : 'none'; };
+let layerVisible = true;
+window.setVisible = function (on) {
+  layerVisible = on !== false;
+  document.body.style.display = layerVisible ? '' : 'none';
+  if (layerVisible) lastT = 0;   // resume cleanly (no catch-up burst)
+};
 window.getState = function () { return JSON.stringify(state); };
 window.cycleLayout = function () {
   layoutIdx = (layoutIdx + 1) % LAYOUTS.length;
@@ -884,15 +898,18 @@ window.applyAutoFit = function (d) {
   const b = d.bounds || null;
   const w = b ? b.width : 0, h = b ? b.height : 0;
   if (w > 0) {
-    root.style.setProperty('--game-w', w + 'px');
-    root.style.setProperty('--game-h', h + 'px');
-    root.style.setProperty('--ui-scale', Math.max(.72, Math.min(1.25, w / 1707)).toFixed(3));
-    document.body.dataset.compact = (w < 1200 || h < 720) ? '1' : '0';
+    const scale = Math.max(.72, Math.min(1.25, w / 1707)).toFixed(3);
+    const gw = w + 'px', gh = h + 'px';
+    if (root.style.getPropertyValue('--game-w') !== gw) root.style.setProperty('--game-w', gw);
+    if (root.style.getPropertyValue('--game-h') !== gh) root.style.setProperty('--game-h', gh);
+    if (root.style.getPropertyValue('--ui-scale') !== scale) root.style.setProperty('--ui-scale', scale);
+    const compact = (w < 1200 || h < 720) ? '1' : '0';
+    if (document.body.dataset.compact !== compact) document.body.dataset.compact = compact;
   }
   document.body.classList.toggle('dimmed', !d.active && !cfg.hideWhenNoGame && !!b);
   const txt = d.active ? (b ? b.width + '×' + b.height + ' 跟随中' : '跟随中') : (d.reason || '未启用');
-  const pf = $('pFit'); if (pf) pf.textContent = txt;
-  const pf2 = $('pFit2'); if (pf2) pf2.textContent = txt;
+  const pf = $('pFit'); if (pf && pf.textContent !== txt) pf.textContent = txt;
+  const pf2 = $('pFit2'); if (pf2 && pf2.textContent !== txt) pf2.textContent = txt;
   return { scale: root.style.getPropertyValue('--ui-scale'), compact: document.body.dataset.compact,
            state: d.active ? 'captured' : (d.excluded ? 'excluded' : 'idle'),
            dimmed: document.body.classList.contains('dimmed') };
@@ -923,6 +940,9 @@ window.syncConfig = function (c) {
 
 function tick(now) {
   requestAnimationFrame(tick);
+  // Hidden overlay: the window is win.hide()n but backgroundThrottling is off, so rAF would
+  // keep running at full speed. Skip all work (and all style writes) while invisible.
+  if (!layerVisible) return;
   // Frame cap: high refresh monitors used to burn CPU at 144+ fps for no visual gain.
   // ~60 fps normally, ~30 fps in low-end mode.
   const capMs = cfg.perfLow ? 33.4 : 16.4;

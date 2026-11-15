@@ -13,7 +13,7 @@ const bad = (name, detail) => { failures.push(name + (detail ? ' :: ' + detail :
 /* 1) required files (same list the release workflow needs on every OS) */
 const required = [
   'README.md', 'LICENSE', 'docs/技术方案.md', 'docs/使用说明.md', 'docs/第三方声明.md',
-  'docs/平台适配.md', 'docs/跨平台适配.md',
+  'docs/平台适配.md', 'docs/跨平台适配.md', 'docs/自检报告-v1.2.md',
   'app/main.js', 'app/preload.js', 'app/lyrics.js', 'app/providers.js',
   'app/backends/index.js', 'app/backends/parse.js',
   'app/backends/media-mac.js', 'app/backends/control-mac.js', 'app/backends/window-mac.js',
