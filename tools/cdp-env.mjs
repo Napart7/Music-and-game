@@ -22,7 +22,6 @@ export const CHROMIUM_ARGS = [
   '--no-sandbox',
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
-  '--no-zygote',
   '--no-first-run',
   '--disable-background-networking',
   '--disable-features=Translate,MediaRouter',

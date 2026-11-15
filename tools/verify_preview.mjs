@@ -53,7 +53,7 @@ try {
     } catch { /* endpoint not up yet */ }
     await sleep(250);
   }
-  if (!target) throw new Error('CDP endpoint not ready');
+  if (!target) throw new Error('CDP endpoint not ready' + (browserErr ? ' :: ' + browserErr.slice(-300) : ''));
 
   ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
