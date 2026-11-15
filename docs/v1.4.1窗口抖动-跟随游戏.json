@@ -1,0 +1,52 @@
+{
+  "delta": {
+    "ignore": 0,
+    "focusable": 0,
+    "show": 0,
+    "hide": 0,
+    "bounds": 0,
+    "top": 0,
+    "tray": 0
+  },
+  "before": {
+    "ignore": 2,
+    "focusable": 2,
+    "show": 0,
+    "hide": 0,
+    "bounds": 0,
+    "top": 0,
+    "tray": 0
+  },
+  "after": {
+    "ignore": 2,
+    "focusable": 2,
+    "show": 0,
+    "hide": 0,
+    "bounds": 0,
+    "top": 0,
+    "tray": 0
+  },
+  "state": {
+    "layerVisible": true,
+    "panelOpen": false,
+    "editMode": false,
+    "clickThrough": true,
+    "topLevel": "screen-saver"
+  },
+  "fit": {
+    "active": true,
+    "reason": "forced-any"
+  },
+  "win": {
+    "process": "thunder",
+    "title": "支付中心",
+    "visible": true,
+    "minimized": false,
+    "rect": [
+      423,
+      243,
+      862,
+      582
+    ]
+  }
+}

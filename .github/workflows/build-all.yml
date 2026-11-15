@@ -28,6 +28,8 @@ jobs:
         run: node tools/check_compliance.mjs
       - name: Backend contract tests (win/mac/linux samples)
         run: node tools/verify_backends.mjs
+      - name: Window classification tests (no Electron)
+        run: node tools/verify_classify.mjs
       - name: Provider + lyric engine tests
         run: |
           node tools/verify_providers.mjs
@@ -60,6 +62,7 @@ jobs:
           fi
           node tools/check_compliance.mjs
           node tools/verify_backends.mjs
+          node tools/verify_classify.mjs
       - name: UI regressions on Linux
         run: |
           # Same retry policy as Windows: the first headless launch on a fresh runner is

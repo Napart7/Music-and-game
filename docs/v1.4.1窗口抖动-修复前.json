@@ -1,0 +1,52 @@
+{
+  "delta": {
+    "ignore": 4,
+    "focusable": 4,
+    "show": 0,
+    "hide": 0,
+    "bounds": 0,
+    "top": 0,
+    "tray": 0
+  },
+  "before": {
+    "ignore": 3,
+    "focusable": 3,
+    "show": 0,
+    "hide": 0,
+    "bounds": 0,
+    "top": 0,
+    "tray": 0
+  },
+  "after": {
+    "ignore": 7,
+    "focusable": 7,
+    "show": 0,
+    "hide": 0,
+    "bounds": 0,
+    "top": 0,
+    "tray": 0
+  },
+  "state": {
+    "layerVisible": true,
+    "panelOpen": false,
+    "editMode": false,
+    "clickThrough": true,
+    "topLevel": "screen-saver"
+  },
+  "fit": {
+    "active": true,
+    "reason": "forced-any"
+  },
+  "win": {
+    "process": "thunder",
+    "title": "迅雷",
+    "visible": true,
+    "minimized": false,
+    "rect": [
+      313,
+      173,
+      1081,
+      721
+    ]
+  }
+}

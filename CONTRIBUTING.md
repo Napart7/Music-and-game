@@ -38,6 +38,7 @@ npm start          # 开发模式启动覆盖层
 
 ```bash
 node tools/check_compliance.mjs   # 合规门禁：必需文件 / 敏感信息 / 语法 / .sh 换行符 / changelog 同步
+node tools/verify_classify.mjs    # 窗口分类 51 项（游戏 / 桌面应用 / 覆盖层 / 启动器）
 node tools/verify_backends.mjs    # 三端后端契约 19 项
 node tools/verify_providers.mjs   # 歌词源解析与清洗 36 项
 node tools/verify_lyrics.mjs      # 歌词引擎 19 项
@@ -58,7 +59,7 @@ node tools/bench_perf.mjs         # 7 个场景各 2 秒：fps / p95 / 掉帧率
 node tools/bench_lyrics.mjs       # 真实网络的连接延迟
 ```
 
-> 全部通过时的总项数是 **186 项**。数字对不上说明有断言被跳过，请检查输出里的 FAIL。
+> 全部通过时的总项数是 **237 项**。数字对不上说明有断言被跳过，请检查输出里的 FAIL。
 
 ---
 

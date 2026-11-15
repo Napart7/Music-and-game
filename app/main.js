@@ -85,30 +85,9 @@ const DEFAULTS = {
   spotifyClientSecret: ''
 };
 
-// Definitely-not-a-game processes. Anything unrecognised but fullscreen/borderless is
-// still treated as a game by the heuristic below, so an unknown single-player game works too.
-const NON_GAME_PROCESSES = new Set([
-  'explorer', 'workbuddy', 'code', 'cursor', 'chrome', 'msedge', 'firefox', 'opera', 'brave',
-  'vivaldi', 'powershell', 'pwsh', 'cmd', 'windowsterminal', 'conhost', 'notepad', 'qqmusic',
-  'cloudmusic', 'wechat', 'weixin', 'qq', 'discord', 'telegram', 'slack', 'feishu', 'dingtalk',
-  'wps', 'et', 'wpp', 'excel', 'winword', 'powerpnt', 'outlook', 'obs64', 'spotify',
-  'music', 'applemusic', 'itunes', 'microsoftmediaplayer',
-  'steamwebhelper', 'electron', 'glasslyrics', 'devenv', 'idea64', 'pycharm64', 'webstorm64',
-  'sublime_text', 'applicationframehost', 'searchapp', 'shellexperiencehost', 'taskmgr',
-  'regedit', 'mmc', 'chrome_proxy', 'zalo', 'tim'
-]);
-
-// Known game executables (substring match). Unknown games still match via window geometry.
-const GAME_HINTS = [
-  'terraria', 'eldenring', 'sekiro', 'darksouls', 'liesofp', 'warframe', 'javaw', 'minecraft',
-  'hollow_knight', 'hades', 'stardew', 'valheim', 'cyberpunk', 'witcher', 'palworld', 'helldivers',
-  'rdr2', 'gtav', 'gta5', 'cs2', 'dota2', 'pathofexile', 'baldursgate', 'bg3', 'monsterhunter',
-  'nierautomata', 'celeste', 'deadcells', 'riskofrain', 'factorio', 'rimworld', 'satisfactory',
-  'subnautica', 'raft', '7daystodie', 'arma', 'rust', 'genshin', 'honkai', 'zenless', 'wuthering',
-  'arknights', 'rpgmaker', 'unity', 'unreal', 'noita', 'slaythespire', 'balatro', 'brotato',
-  'teardown', 'beamng', 'assetto', 'forza', 'eu4', 'ck3', 'hoi4', 'stellar', 'civilization',
-  'totalwar', 'mountandblade', 'bannerlord', 'vampiresurvivors', 'deeprock', 'helldivers2'
-];
+// Foreground-window classification lives in window-classify.js so it can be unit-tested
+// (tools/verify_classify.mjs) without booting Electron.
+const { classifyWindow } = require('./window-classify');
 
 let win = null;
 let tray = null;
@@ -166,37 +145,24 @@ function toLogicalRect(info, scale) {
   return g;
 }
 
-function classifyWindow(info, scale) {
-  if (!info || !info.ok) return { isGame: false, reason: 'no-window' };
-  const p = String(info.process || '').toLowerCase();
-  if (info.desktop || info.minimized || !info.visible) return { isGame: false, reason: 'desktop-or-hidden' };
-  // Test hook: force a given foreground process to be treated as a game (no effect in normal use).
-  const forced = String(process.env.GL_FORCE_GAME_PROCESS || '').toLowerCase().replace(/\.exe$/, '');
-  if (forced && (p === forced || p.replace(/\.exe$/, '') === forced)) {
-    return { isGame: true, ratio: null, reason: 'forced-by-test' };
+function classifyForFit(info, scale) {
+  const rect = info && info.rect ? toLogicalRect(info, scale) : null;
+  let display = null;
+  if (rect) {
+    try {
+      const d = screen.getDisplayMatching({ x: rect[0], y: rect[1], width: rect[2], height: rect[3] });
+      display = d && d.bounds ? { width: d.bounds.width, height: d.bounds.height } : null;
+    } catch { display = null; }
   }
-  if (p === 'glasslyrics' || p === 'electron') return { isGame: false, reason: 'self' };
-  if (NON_GAME_PROCESSES.has(p)) return { isGame: false, reason: 'non-game-app' };
-  const excluded = (config.excludeProcesses || []).some((x) => {
-    const n = String(x).toLowerCase().replace(/\.exe$/, '');
-    return n === p || n === p.replace(/\.exe$/, '');
+  return classifyWindow(info, {
+    rect,
+    display,
+    // Same floor as before (320x240) — minWindowWidth/Height below is the *fit* threshold.
+    minW: 320,
+    minH: 240,
+    exclude: config.excludeProcesses || [],
+    forced: process.env.GL_FORCE_GAME_PROCESS || ''
   });
-  if (excluded) return { isGame: false, excluded: true, reason: 'excluded-by-config' };
-
-  const r = toLogicalRect(info, scale);
-  const w = r[2], h = r[3];
-  if (w < 320 || h < 240) return { isGame: false, reason: 'too-small' };
-  try {
-    const d = screen.getDisplayMatching({ x: r[0], y: r[1], width: w, height: h });
-    const ratio = (w * h) / (d.bounds.width * d.bounds.height);
-    const hinted = GAME_HINTS.some((k) => p.includes(k)) ||
-                   /minecraft|terraria|elden ring|sekiro|dark souls/i.test(String(info.title || ''));
-    const isGame = hinted || ratio >= 0.72 || (ratio >= 0.5 && !info.title);
-    return { isGame, ratio: +ratio.toFixed(3),
-             reason: hinted ? 'process-hint' : (isGame ? 'large-window' : 'small-or-captioned') };
-  } catch {
-    return { isGame: false, reason: 'display-lookup-failed' };
-  }
 }
 
 function loadConfig() {
@@ -336,20 +302,51 @@ function createWindow() {
  * nets: window blur, the window-probe heartbeat (game becomes foreground), and a click
  * outside the panel closing it. */
 let lastIgnore = null;
+// Instrumentation: every Win32 window call on a fullscreen always-on-top window is a
+// z-order / activation event. Counting them makes "why did my tray menu close" measurable.
+const winCalls = { ignore: 0, focusable: 0, show: 0, hide: 0, bounds: 0, top: 0 };
+
 function applyClickThrough(force) {
   if (!win || win.isDestroyed()) return;
   const clickable = panelOpen || editMode;
   if (!force && lastIgnore === !clickable) return;      // avoid redundant Win32 calls
+  winCalls.ignore++;
+  winCalls.focusable++;
   win.setIgnoreMouseEvents(!clickable, { forward: true });
   win.setFocusable(clickable);
   lastIgnore = !clickable;
 }
 
-/** Re-assert transparency periodically. Windows/Electron can lose the click-through flag
- *  after focus changes (alt-tab out and back) — that is the "overlay eats my clicks" bug. */
+/**
+ * Re-assert transparency only when it actually drifted.
+ *
+ * This used to call applyClickThrough(true) unconditionally every 2s. On Windows every
+ * setIgnoreMouseEvents / setFocusable re-applies window styles and re-raises the topmost
+ * fullscreen window, which (a) put the overlay above other apps' popups and (b) cancelled
+ * any open native menu in this process — the tray menu appeared, then vanished ~2s later.
+ * A read-only isFocusable() probe keeps the safety net without the side effects.
+ */
 function ensureClickThrough() {
-  if (!win || win.isDestroyed() || panelOpen || editMode) return;
+  if (!win || win.isDestroyed() || panelOpen || editMode || !layerVisible) return;
+  if (lastIgnore === true && !win.isFocusable()) return;   // already click-through
   applyClickThrough(true);
+}
+
+/**
+ * Window z-order band.
+ *
+ * `screen-saver` is required to sit above a borderless-fullscreen game, but it also puts
+ * the overlay above every other topmost window — including native menus and other apps'
+ * popups (that is the "it covers QQ / the tray menu" complaint). The high band is only
+ * used while a game window is actually captured; outside games the overlay sits at
+ * `floating`, which still covers normal windows but lets menus and popups stay on top.
+ */
+let topLevel = 'screen-saver';
+function setTopLevel(level) {
+  if (!win || win.isDestroyed() || topLevel === level) return;
+  topLevel = level;
+  winCalls.top++;
+  try { win.setAlwaysOnTop(true, level); } catch { /* ignore unsupported level */ }
 }
 
 function setPanel(on) {
@@ -375,8 +372,8 @@ function setLayerVisible(on) {
   if (layerVisible === on) return;
   layerVisible = on;
   if (!win || win.isDestroyed()) return;
-  if (layerVisible) win.showInactive();
-  else win.hide();
+  if (layerVisible) { winCalls.show++; win.showInactive(); }
+  else { winCalls.hide++; win.hide(); }
   win.webContents.send('visible', layerVisible);
   // A freshly shown window may come back as clickable — re-assert transparency.
   applyClickThrough(true);
@@ -443,9 +440,11 @@ function setHotkey(action, accel) {
   return { ok: !clean || registered === clean, registered, hotkeys: { ...hotkeys } };
 }
 
-function rebuildTray() {
-  if (!tray) return;
-  tray.setContextMenu(Menu.buildFromTemplate([
+let trayRebuilds = 0;   // counts menu pops (instrumentation only)
+
+/** Build the tray menu fresh. Called when the icon is clicked — never in advance. */
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
     { label: 'GlassLyrics', enabled: false },
     { type: 'separator' },
     { label: layerVisible ? '隐藏覆盖层' : '显示覆盖层', click: () => setLayerVisible(!layerVisible) },
@@ -482,8 +481,50 @@ function rebuildTray() {
     },
     { type: 'separator' },
     { label: '退出', click: () => app.quit() }
-  ]));
-  tray.setToolTip('GlassLyrics · 不注入游戏进程');
+  ]);
+}
+
+/**
+ * Refresh the tray tooltip only.
+ *
+ * This used to install a freshly built menu via tray.setContextMenu() on every state
+ * change. On Windows that replaces the native menu handle, which DISMISSES a menu that is
+ * currently open: right-clicking the tray icon showed the menu, then the 400ms window
+ * probe flipped `layerVisible` (another app became foreground) and the menu vanished.
+ * The menu is now constructed on demand in popupTrayMenu() and never replaced.
+ */
+let traySignature = '';
+// Windows (and macOS) can build the menu at click time, which removes the whole
+// "replacing an open menu closes it" class of bug. Linux AppIndicator menus are owned by
+// the desktop shell, so there the menu must still be installed ahead of time.
+const TRAY_ON_DEMAND = process.platform !== 'linux';
+let trayFallback = false;   // set if popUpContextMenu ever fails on this system
+
+function rebuildTray() {
+  if (!tray) return;
+  try {
+    tray.setToolTip(`GlassLyrics · ${layerVisible ? '显示中' : '已隐藏'}${panelOpen ? ' · 菜单已打开' : ''}`);
+  } catch { /* tooltip is cosmetic */ }
+  if (TRAY_ON_DEMAND && !trayFallback) return;
+  const sig = JSON.stringify([layerVisible, panelOpen, config.lyricSource, config.autoFit,
+    config.hideWhenNoGame, config.displayIndex]);
+  if (sig === traySignature) return;
+  traySignature = sig;
+  try { tray.setContextMenu(buildTrayMenu()); } catch { /* tray is cosmetic */ }
+}
+
+function popupTrayMenu() {
+  if (!tray) return;
+  trayRebuilds++;
+  try {
+    tray.popUpContextMenu(buildTrayMenu());
+  } catch (e) {
+    // Old Electron / odd shells: fall back to the install-a-menu model for this session.
+    console.error('[tray] menu failed, falling back:', e.message);
+    trayFallback = true;
+    traySignature = '';
+    rebuildTray();
+  }
 }
 
 function createTray() {
@@ -496,6 +537,12 @@ function createTray() {
   }
   try {
     tray = new Tray(img);
+    if (TRAY_ON_DEMAND) {
+      // Build the menu at click time so a background state change can never replace
+      // (and thereby close) a menu the user is looking at.
+      tray.on('right-click', popupTrayMenu);
+      tray.on('click', popupTrayMenu);
+    }
     rebuildTray();
   } catch (e) {
     // Linux desktops without AppIndicator support reject Tray creation. The overlay itself
@@ -551,7 +598,7 @@ function applyWindowFit(info) {
   if (!win || win.isDestroyed() || !info || !info.rect) return;
   lastWindowInfo = info;
   const scale = displayScaleAt(info.rect[0], info.rect[1]);
-  const cls = classifyWindow(info, scale);
+  const cls = classifyForFit(info, scale);
   const r = toLogicalRect(info, scale);
   const wasActive = autoFitState.active;
   autoFitState = {
@@ -562,6 +609,7 @@ function applyWindowFit(info) {
 
   if (!config.autoFit) {
     autoFitState.reason = 'auto-fit-disabled';
+    setTopLevel('screen-saver');
     resetToDisplay();
     setLayerVisible(true);
     broadcastFit();
@@ -580,7 +628,11 @@ function applyWindowFit(info) {
   }
 
   if (!cls.isGame) {
-    if (config.hideWhenNoGame) {
+    // Not a game: stay in the lower band so other apps' menus/popups are never covered.
+    setTopLevel('floating');
+    // Never hide while the user is inside our own panel / drag mode: the menu is what they
+    // are looking at, and hiding it reads as "the window closed by itself".
+    if (config.hideWhenNoGame && !panelOpen && !editMode) {
       autoFitState.reason = cls.excluded ? 'excluded-by-config' : cls.reason;
       setLayerVisible(false);
     } else {
@@ -607,6 +659,7 @@ function applyWindowFit(info) {
   const bh = Math.min(r[1] + r[3], db.y + db.height) - by;
   if (bw < 320 || bh < 240) { broadcastFit(); return; }
 
+  setTopLevel('screen-saver');   // a game is captured: stay above borderless fullscreen
   const bounds = { x: bx, y: by, width: bw, height: bh };
   if (!sameBounds(lastAppliedBounds, bounds)) {
     win.setBounds(bounds);
@@ -733,6 +786,14 @@ function maybeSmoke(d) {
       const out = {
         ok: true, at: new Date().toISOString(), electron: process.versions.electron,
         packaged: app.isPackaged, hotkeys, config, smtc: d, dom,
+        winApi: { ...winCalls }, trayRebuilds,
+        tray: (() => {
+          try {
+            const m = buildTrayMenu();
+            return { present: !!tray, items: m.items.length,
+                     lastState: layerVisible ? 'visible' : 'hidden' };
+          } catch (e) { return { error: e.message }; }
+        })(),
         autoFit: autoFitState,
         windowProbe: lastWindowInfo ? { rect: lastWindowInfo.rect, rectPhysical: lastWindowInfo.rectPhysical,
                                         title: lastWindowInfo.title, className: lastWindowInfo.className } : null,
@@ -1002,6 +1063,30 @@ if (!gotLock) {
     // sandboxed test runner, so this exercises everything downstream of it — the nudge,
     // config persistence, the lyric-offset IPC and the toast text in the renderer —
     // then restores the user's original offset.
+    // Window-churn measurement: counts Win32 window calls (and tray rebuilds) during an
+    // idle 8s window. A fullscreen always-on-top window must sit at 0 while nothing
+    // changes — every extra call re-raises it above other apps' menus.
+    if (process.env.GL_TEST_CHURN === '1') {
+      setTimeout(async () => {
+        const snap = () => ({ ...winCalls, tray: trayRebuilds });
+        const a = snap();
+        await new Promise((r) => setTimeout(r, 8000));
+        const b = snap();
+        const delta = {};
+        for (const k of Object.keys(b)) delta[k] = b[k] - a[k];
+        const st = { delta, before: a, after: b,
+                     state: { layerVisible, panelOpen, editMode, clickThrough: lastIgnore, topLevel },
+                     fit: { active: autoFitState.active, reason: autoFitState.reason },
+                     win: lastWindowInfo ? { process: lastWindowInfo.process, title: lastWindowInfo.title,
+                                             visible: lastWindowInfo.visible, minimized: lastWindowInfo.minimized,
+                                             rect: lastWindowInfo.rect } : null };
+        console.log('[churn-test]', JSON.stringify(st));
+        const target = process.env.GL_CHURN_OUT || path.join(USER_DIR, 'churn-test.json');
+        try { fs.writeFileSync(target, JSON.stringify(st, null, 2), 'utf8'); } catch (e) { console.error(e); }
+        if (process.env.GL_CHURN_QUIT === '1') setTimeout(() => app.quit(), 300);
+      }, 3500);
+    }
+
     if (process.env.GL_TEST_OFFSET === '1') {
       setTimeout(async () => {
         const before = Number(config.lyricOffsetMs) || 0;

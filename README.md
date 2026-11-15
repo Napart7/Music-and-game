@@ -38,10 +38,11 @@ GlassLyrics 是一个**独立透明置顶窗口**，把 DangoMusic 那种液态�
 
 ---
 
-## ✨ 最近更新 · v1.4.0
+## ✨ 最近更新 · v1.4.1
 
 | 更新 | 说明 |
 |---|---|
+| **修复：托盘菜单自己消失 / 覆盖层压住其他软件** | v1.4.1：一颗 2 秒心跳反复重设窗口样式是根因。菜单改为点击时构建，空闲期窗口调用 **4→0 次/8 秒**；非游戏前台时层级降为 `floating`；NVIDIA Overlay 等 129 个进程不再被误判为游戏 |
 | **歌词偏移微调热键** | `Ctrl+Alt+PageUp` 提前 / `Ctrl+Alt+PageDown` 延后 0.1 秒。蓝牙耳机、HDMI 电视的 100–300ms 延迟，在游戏里按两下就对齐，不用开菜单 |
 | **屏幕轻提示** | 调偏移时屏幕下方浮出 1.7 秒提示「歌词偏移 +200 ms（更早）」，点击穿透、不挡操作 |
 | **关于页说真话** | 版本 / 平台 / 架构运行时读取（之前写死 1.0.0），新增「最近更新」卡片 |
@@ -300,10 +301,11 @@ npm start            # 开发运行
 npm run dist         # 打包（NSIS + 便携 exe → ../dist）
 ```
 
-**回归测试**（无需 Electron，headless Chrome/Edge + CDP，共 186 项）：
+**回归测试**（无需 Electron，headless Chrome/Edge + CDP，共 237 项）：
 
 ```bash
 node tools/check_compliance.mjs   # 门禁：文件 / 敏感信息 / 语法 / .sh 换行符 / changelog 同步
+node tools/verify_classify.mjs    # 51 项：窗口分类（游戏 / 桌面应用 / 覆盖层 / 启动器）
 node tools/verify_backends.mjs    # 19 项：三端后端契约（媒体 / 窗口 / 路由）
 node tools/verify_providers.mjs   # 36 项：解析 / 清洗 / 平台识别 / 降级
 node tools/verify_lyrics.mjs      # 19 项：歌词引擎 / 缓存

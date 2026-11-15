@@ -15,12 +15,13 @@ const required = [
   'README.md', 'LICENSE', 'docs/技术方案.md', 'docs/使用说明.md', 'docs/第三方声明.md',
   'docs/平台适配.md', 'docs/跨平台适配.md', 'docs/自检报告-v1.2.md', 'docs/性能自检-v1.3.md',
   'docs/更新说明-v1.4.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'app/changelog.json',
-  'app/main.js', 'app/preload.js', 'app/lyrics.js', 'app/providers.js',
+  'app/main.js', 'app/preload.js', 'app/lyrics.js', 'app/providers.js', 'app/window-classify.js',
   'app/backends/index.js', 'app/backends/parse.js',
   'app/backends/media-mac.js', 'app/backends/control-mac.js', 'app/backends/window-mac.js',
   'app/backends/media-linux.sh', 'app/backends/control-linux.sh', 'app/backends/window-linux.sh',
   'app/smtc-bridge.ps1', 'app/smtc-control.ps1', 'app/window-probe.ps1',
-  'app/renderer/index.html', 'tools/verify_providers.mjs', 'tools/verify_backends.mjs'
+  'app/renderer/index.html', 'tools/verify_providers.mjs', 'tools/verify_backends.mjs',
+  'tools/verify_classify.mjs'
 ];
 for (const f of required) {
   fs.existsSync(path.join(ROOT, f)) ? ok('存在 ' + f) : bad('缺少文件 ' + f);
@@ -55,6 +56,17 @@ for (const f of jsFiles) {
   bad('语法错误 ' + path.relative(ROOT, f), (r.stderr || '').split('\n')[0]);
 }
 ok(`JS 语法检查完成（${jsFiles.length} 个文件）`);
+
+/* 3a) every top-level app/*.js must be packed (a missing entry crashes the packaged app) */
+{
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'package.json'), 'utf8'));
+  const packed = new Set((pkg.build?.files) || []);
+  const appJs = fs.readdirSync(path.join(ROOT, 'app'))
+    .filter((f) => f.endsWith('.js') && f !== 'package.json');
+  const missing = appJs.filter((f) => !packed.has(f));
+  if (missing.length) bad('打包清单缺少 ' + missing.join(', '), 'app/package.json build.files');
+  else ok(`app/*.js 已全部加入打包清单（${appJs.length} 个）`);
+}
 
 /* 3b) app/changelog.json must match CHANGELOG.md (the About page reads it) */
 {

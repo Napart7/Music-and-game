@@ -1,0 +1,52 @@
+{
+  "delta": {
+    "ignore": 0,
+    "focusable": 0,
+    "show": 0,
+    "hide": 0,
+    "bounds": 0,
+    "top": 0,
+    "tray": 0
+  },
+  "before": {
+    "ignore": 3,
+    "focusable": 3,
+    "show": 0,
+    "hide": 1,
+    "bounds": 0,
+    "top": 1,
+    "tray": 0
+  },
+  "after": {
+    "ignore": 3,
+    "focusable": 3,
+    "show": 0,
+    "hide": 1,
+    "bounds": 0,
+    "top": 1,
+    "tray": 0
+  },
+  "state": {
+    "layerVisible": false,
+    "panelOpen": false,
+    "editMode": false,
+    "clickThrough": true,
+    "topLevel": "floating"
+  },
+  "fit": {
+    "active": false,
+    "reason": "non-game-app"
+  },
+  "win": {
+    "process": "explorer",
+    "title": "",
+    "visible": true,
+    "minimized": false,
+    "rect": [
+      0,
+      1019,
+      1707,
+      48
+    ]
+  }
+}
