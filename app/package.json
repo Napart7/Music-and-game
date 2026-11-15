@@ -1,6 +1,6 @@
 {
   "name": "glasslyrics",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Cross-game transparent lyric overlay. No injection, no game memory access.",
   "main": "main.js",
   "author": "GlassLyrics contributors",

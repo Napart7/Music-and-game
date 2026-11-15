@@ -177,6 +177,18 @@ try {
   await ev("document.getElementById('menuClose').click()");
   check('关闭按钮收起主菜单', (await ev('window.getMenuState().open')) === false);
 
+  /* ---------------- click-through safety nets ("overlay blocks game clicks") ---------------- */
+  await ev("window.setPanel(true)");
+  await ev("document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))");
+  check('点面板外自动收起菜单', (await ev('window.getMenuState().open')) === false);
+  await ev("window.setEditMode(true)");
+  await ev("document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))");
+  check('点空白自动退出拖动模式', (await ev("document.body.dataset.edit")) === '0');
+  await ev("window.setEditMode(true)");
+  await ev("document.querySelector('.side.left').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))");
+  check('点歌词本身不退出拖动模式', (await ev("document.body.dataset.edit")) === '1');
+  await ev("window.setEditMode(false)");
+
   /* ---------------- rebindable hotkeys ---------------- */
   const hkCount = await ev("document.querySelectorAll('#hkList .hotkey').length");
   check('热键列表渲染 8 个动作', hkCount === 8, `rows=${hkCount}`);

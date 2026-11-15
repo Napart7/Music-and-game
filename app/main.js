@@ -243,7 +243,20 @@ function createWindow() {
 
   win.on('page-title-updated', (e) => e.preventDefault());
   win.setAlwaysOnTop(true, 'screen-saver');
-  win.setIgnoreMouseEvents(true, { forward: true });
+  lastIgnore = null;
+  applyClickThrough();
+  // Safety net #1: leaving the window (Alt-Tab, clicking another app) must never leave the
+  // overlay in a clickable state — that is how it ends up blocking the game.
+  win.on('blur', () => {
+    if (panelOpen || editMode) {
+      console.log('[click] blur -> restoring click-through');
+      panelOpen = false; editMode = false;
+      applyClickThrough();
+      win.webContents.send('panel', false);
+      win.webContents.send('edit-mode', false);
+      rebuildTray();
+    }
+  });
   win.loadFile(path.join(ROOT, 'renderer', 'index.html'));
   win.webContents.on('did-finish-load', () => {
     loaded = true;
@@ -251,11 +264,33 @@ function createWindow() {
   });
 }
 
+/* ---------------- click-through state machine ----------------
+ * The overlay is a full-screen window: "clickable" is window-wide, so a panel or drag
+ * mode left open swallows EVERY click on the screen (the reported "can't click the game"
+ * bug). Every state change goes through applyClickThrough(), and there are three safety
+ * nets: window blur, the window-probe heartbeat (game becomes foreground), and a click
+ * outside the panel closing it. */
+let lastIgnore = null;
+function applyClickThrough(force) {
+  if (!win || win.isDestroyed()) return;
+  const clickable = panelOpen || editMode;
+  if (!force && lastIgnore === !clickable) return;      // avoid redundant Win32 calls
+  win.setIgnoreMouseEvents(!clickable, { forward: true });
+  win.setFocusable(clickable);
+  lastIgnore = !clickable;
+}
+
+/** Re-assert transparency periodically. Windows/Electron can lose the click-through flag
+ *  after focus changes (alt-tab out and back) — that is the "overlay eats my clicks" bug. */
+function ensureClickThrough() {
+  if (!win || win.isDestroyed() || panelOpen || editMode) return;
+  applyClickThrough(true);
+}
+
 function setPanel(on) {
   panelOpen = !!on;
   if (!win || win.isDestroyed()) return;
-  win.setIgnoreMouseEvents(!(panelOpen || editMode), { forward: true });
-  win.setFocusable(panelOpen || editMode);
+  applyClickThrough();
   win.webContents.send('panel', panelOpen);
   rebuildTray();
 }
@@ -263,9 +298,9 @@ function setPanel(on) {
 function setEditMode(on) {
   editMode = !!on;
   if (!win || win.isDestroyed()) return;
-  if (editMode && panelOpen) setPanel(false);   // lyrics must be visible & draggable
-  win.setIgnoreMouseEvents(!(editMode || panelOpen), { forward: true });
-  win.setFocusable(editMode || panelOpen);
+  if (editMode && panelOpen) panelOpen = false;   // lyrics must be visible & draggable
+  applyClickThrough();
+  win.webContents.send('panel', panelOpen);
   win.webContents.send('edit-mode', editMode);
 }
 
@@ -278,6 +313,8 @@ function setLayerVisible(on) {
   if (layerVisible) win.show();
   else win.hide();
   win.webContents.send('visible', layerVisible);
+  // A freshly shown window may come back as clickable — re-assert transparency.
+  applyClickThrough(true);
   rebuildTray();
 }
 
@@ -544,6 +581,7 @@ function maybeSmoke(d) {
       hotkeyRows: document.querySelectorAll('#hkList .hotkey').length,
       floatRows: typeof window.getfloatRows === 'function' ? window.getfloatRows() : null,
       writes: { ...(window.__w || {}) },
+      click: window.glass ? await window.glass.getClickState() : null,
       pickPage: document.querySelectorAll('.page[data-page=pick]').length,
       pickSearch: window.glass
         ? await window.glass.searchSongs('孤勇者', 'qqmusic')
@@ -710,11 +748,14 @@ ipcMain.on('refresh-lyrics', () => refreshLyrics());
 ipcMain.on('control', (_e, action) => runControl(action));
 ipcMain.on('close-panel', () => setPanel(false));
 ipcMain.on('set-edit-mode', (_e, on) => setEditMode(on));
-ipcMain.on('quit-app', () => app.quit());
-ipcMain.on('set-clickable', (_e, on) => {
-  if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(!on, { forward: true });
+// Safety net #3: renderer clicked outside the panel -> collapse it (next click hits the game).
+ipcMain.on('dismiss-overlay', () => {
+  if (panelOpen) setPanel(false);
+  if (editMode) setEditMode(false);
 });
+ipcMain.on('quit-app', () => app.quit());
 ipcMain.on('cycle-layout', () => win && win.webContents.send('cycle-layout'));
+ipcMain.handle('get-click-state', () => ({ clickThrough: lastIgnore === true, panelOpen, editMode }));
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -729,6 +770,21 @@ if (!gotLock) {
     startBridge();
     startWindowProbe();
     if (process.env.GL_FORCE_MENU_OPEN === '1') setTimeout(() => setPanel(true), 1500);
+    // Regression hook for the "overlay blocks game clicks" bug: open the panel (simulating a
+    // stuck UI), then let the window probe force it closed when the game is foreground again.
+    if (process.env.GL_TEST_STUCK === '1') {
+      setTimeout(() => { setPanel(true); }, 2000);
+      setTimeout(() => { setPanel(false); }, 3000);   // simulate "click outside panel"
+      setTimeout(() => {
+        const st = { panelOpen, editMode, clickThrough: lastIgnore === true };
+        console.log('[stuck-test]', JSON.stringify(st));
+        const target = process.env.GL_STUCK_OUT || path.join(USER_DIR, 'stuck-test.json');
+        try { fs.writeFileSync(target, JSON.stringify(st, null, 2), 'utf8'); } catch (e) { console.error(e); }
+        if (process.env.GL_SMOKE === '1') setTimeout(() => app.quit(), 300);
+      }, 4500);
+    }
+    // Heartbeat: alt-tab / focus churn can silently drop the click-through flag.
+    setInterval(ensureClickThrough, 2000);
     console.log('[app] ready', TITLE);
   });
 }

@@ -1093,6 +1093,24 @@ document.querySelectorAll('.controls [data-act], [data-act]').forEach(btn => {
   });
 });
 $('quitBtn').addEventListener('click', () => { if (window.glass) window.glass.quitApp(); });
+/* Clicking anywhere outside the interactive UI collapses it, so the NEXT click reaches
+ * the game. Without this, a forgotten menu / drag mode keeps the whole fullscreen layer
+ * clickable and the game becomes unclickable. */
+document.addEventListener('mousedown', (e) => {
+  const t = e.target;
+  const inPanel = t.closest && t.closest('#panel');
+  const inSide = t.closest && t.closest('.side');
+  const inBar = t.closest && t.closest('#editBar');
+  if (document.body.dataset.edit === '1' && !inSide && !inBar) {
+    window.setEditMode(false);                     // drag mode ends on a click elsewhere
+    if (window.glass) window.glass.dismissOverlay();
+    return;
+  }
+  if (document.body.dataset.menuOpen === '1' && !inPanel) {
+    window.setPanel(false);
+    if (window.glass) window.glass.dismissOverlay();
+  }
+}, true);
 $('hkReset').addEventListener('click', async () => {
   for (const a of Object.keys(HK_DEFAULTS)) await applyHotkey(a, HK_DEFAULTS[a]);
 });
@@ -1152,6 +1170,12 @@ $('pickGo').addEventListener('click', doPickSearch);
 $('pickQuery').addEventListener('keydown', (e) => { if (e.key === 'Enter') doPickSearch(); });
 window.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    // Escape leaves drag/edit mode first — otherwise a stuck edit mode eats every click.
+    if (document.body.dataset.edit === '1') {
+      window.setEditMode(false);
+      if (window.glass) window.glass.dismissOverlay();
+      return;
+    }
     if (window.glass) window.glass.closePanel();
     window.setPanel(false);
   }
