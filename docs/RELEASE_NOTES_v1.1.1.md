@@ -1,4 +1,4 @@
-## GlassLyrics v1.1.0 — Windows / macOS / Linux 三平台
+## GlassLyrics v1.1.1 — Windows / macOS / Linux 三平台
 
 ### 新增：跨平台后端抽象层
 
@@ -44,6 +44,6 @@ sudo apt install playerctl xdotool x11-utils
 
 | 平台 | 文件 |
 |---|---|
-| Windows | `GlassLyrics Setup 1.1.0.exe` / `GlassLyrics-Portable.exe` |
-| macOS | `GlassLyrics-1.1.0-arm64.dmg` / `-x64.dmg`（CI 构建） |
-| Linux | `GlassLyrics-1.1.0.AppImage` / `glasslyrics_1.1.0_amd64.deb`（CI 构建） |
+| Windows | `GlassLyrics Setup 1.1.1.exe` / `GlassLyrics-Portable.exe` |
+| macOS | `GlassLyrics-1.1.1-arm64.dmg` / `-x64.dmg`（CI 构建） |
+| Linux | `GlassLyrics-1.1.1.AppImage` / `glasslyrics_1.1.1_amd64.deb`（CI 构建） |
