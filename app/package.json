@@ -3,7 +3,10 @@
   "version": "1.1.0",
   "description": "Cross-game transparent lyric overlay. No injection, no game memory access.",
   "main": "main.js",
-  "author": "GlassLyrics contributors",
+  "author": {
+    "name": "GlassLyrics contributors",
+    "email": "glasslyrics@users.noreply.github.com"
+  },
   "license": "MIT",
   "scripts": {
     "start": "electron .",
@@ -53,6 +56,7 @@
       "icon": "assets/icon-512.png",
       "category": "AudioVideo",
       "synopsis": "Cross-game lyric overlay",
+      "maintainer": "GlassLyrics contributors <glasslyrics@users.noreply.github.com>",
       "target": [
         { "target": "AppImage", "arch": ["x64"] },
         { "target": "deb", "arch": ["x64"] }
