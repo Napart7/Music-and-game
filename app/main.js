@@ -531,17 +531,19 @@ function trayPanelSnapshot() {
 
 function broadcastTrayPanel(force) {
   if (!trayPanel || trayPanel.isDestroyed() || !trayPanel.webContents || trayPanel.webContents.isDestroyed()) return;
-  const state = trayPanelSnapshot();
-  // Only the fields the tray panel renders affect whether we need to resend.
-  // Stringifying the whole config (which includes Spotify creds and every hotkey) every
-  // 500ms playback tick was pure waste — compare just the visible slice instead.
+  // Compute the cheap signature first. trayPanelSnapshot() copies the whole config and
+  // strips credentials; building it on every 500ms playback tick only to throw it away
+  // when the signature matched was pure waste. Only a real change builds the full state.
+  const track = lastSmtc && lastSmtc.active
+    ? [lastSmtc.title || '', lastSmtc.artist || '', lastSmtc.status || '']
+    : null;
   const sig = JSON.stringify([
-    state.config.lyricSource, state.config.autoFit, state.config.hideWhenNoGame,
-    state.config.openAtLogin, state.layerVisible, state.panelOpen, state.pinned, state.track
+    config.lyricSource, config.autoFit, config.hideWhenNoGame, config.openAtLogin,
+    layerVisible, panelOpen, !!(trayPanel && !trayPanel.isDestroyed()), track
   ]);
   if (!force && sig === trayPanelSignature) return; // no 500ms playback-poll rerenders
   trayPanelSignature = sig;
-  trayPanel.webContents.send('tray-panel-state', state);
+  trayPanel.webContents.send('tray-panel-state', trayPanelSnapshot());
 }
 
 function keepPinnedTrayAboveOverlay() {
@@ -1026,8 +1028,12 @@ function warmUpLyricHosts() {
     for (const u of hosts) {
       try {
         const ctrl = new AbortController();
-        setTimeout(() => ctrl.abort(), 4000);
-        fetch(u, { method: 'HEAD', signal: ctrl.signal }).catch(() => {});
+        const timer = setTimeout(() => ctrl.abort(), 4000);
+        // Clear the abort timer as soon as the probe settles. Otherwise five 4s timers
+        // stay alive after every request has already finished.
+        fetch(u, { method: 'HEAD', signal: ctrl.signal })
+          .catch(() => {})
+          .finally(() => clearTimeout(timer));
       } catch { /* ignore */ }
     }
   }, 2500);

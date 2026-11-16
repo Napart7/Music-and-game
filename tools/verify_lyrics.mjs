@@ -3,6 +3,8 @@ import { resolveEdge, toFileUrl, profileDir, CHROMIUM_ARGS } from './cdp-env.mjs
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { createRequire } from 'node:module';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,6 +37,35 @@ check('trackKey 大小写与噪声无关',
   L.trackKey({ title: 'True Love (Explicit)', artist: 'P!NK/Lily Allen' }) ===
   L.trackKey({ title: 'true love', artist: 'p!nk' }),
   L.trackKey({ title: 'True Love (Explicit)', artist: 'P!NK/Lily Allen' }));
+
+// --- hot-path invariants (app/lyrics.js memoisation + bounded cache pruning) ---
+check('provider 顺序复用预计算常量',
+  L.resolveOrder('qqmusic', 'auto') === L.resolveOrder('qqmusic', 'auto') &&
+  L.resolveOrder('spotify', 'auto')[0] === 'lrclib');
+
+// With 120 cached songs (cap 300), writing one more lyric used to statSync() all 120
+// files and sort them just to discover nothing needed pruning. It must now be zero stats.
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gl-hotpath-'));
+  const saved = {};
+  for (const k of Object.keys(L.providers)) {
+    saved[k] = L.providers[k];
+    L.providers[k] = async () => ({ ok: true, lines: [{ time: 0, text: 'x' }], source: 'stub' });
+  }
+  const origStat = fs.statSync;
+  let statCalls = 0;
+  fs.statSync = (...a) => { statCalls++; return origStat(...a); };
+  try {
+    for (let i = 0; i < 120; i++) fs.writeFileSync(path.join(dir, `c${i}.json`), '{}');
+    await L.fetchLyrics({ title: 'Cache Probe Song', artist: 'Probe' }, dir, { preferred: 'qqmusic' });
+  } finally {
+    fs.statSync = origStat;
+    for (const k of Object.keys(saved)) L.providers[k] = saved[k];
+  }
+  check('缓存未满时写歌词零 statSync', statCalls === 0,
+    `statSync=${statCalls}（优化前=120）`);
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+}
 
 // --- renderer ---
 const proc = spawn(EDGE, [
@@ -115,6 +146,17 @@ try {
 
   const st = await ev("window.getLyricState()");
   check('时间轴被载入', st.mode === 'real' && st.times.length === 3 && st.times[1] === 10, JSON.stringify(st.times));
+  // The rAF path probes "same line / next line" in O(1) and falls back to binary search.
+  // Cover forward stepping, a multi-line seek, a backwards seek and past-the-end.
+  const idxProbe = await ev(`(() => {
+    const t = [0, 4, 8, 12, 16, 20];
+    return [
+      indexAtLocal(t, 2), indexAtLocal(t, 6), indexAtLocal(t, 10),
+      indexAtLocal(t, 18), indexAtLocal(t, 1), indexAtLocal(t, 14), indexAtLocal(t, 25)
+    ];
+  })()`);
+  check('逐帧定位：顺序 / 跳句 / 回退 / 越界',
+    JSON.stringify(idxProbe) === JSON.stringify([0, 1, 2, 4, 0, 3, 5]), JSON.stringify(idxProbe));
   check('右侧标签改为下一句', (await ev("document.querySelector('.side.right .side-label').textContent")) === '下一句 / 状态');
   check('面板显示真实歌词来源', /LRCLIB · 整行时间轴 · 3 行 · 逐字为推算/.test(
     await ev("document.getElementById('pLyricSrc').textContent")));

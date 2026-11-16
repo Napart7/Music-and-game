@@ -1,7 +1,6 @@
 # 参与贡献 / 本地开发
 
-感谢你愿意花时间。这是一个**个人向的桌面小工具**（Windows / macOS / Linux），
-零运行时依赖，代码全部在这个仓库里。下面是你需要知道的全部。
+GlassLyrics 的全部代码都在这个仓库里，运行时依赖只有 Electron。下面是本地跑起来、跑回归和发版的步骤。
 
 ---
 
@@ -41,7 +40,7 @@ node tools/check_compliance.mjs   # 合规门禁：必需文件 / 敏感信息 /
 node tools/verify_classify.mjs    # 窗口分类 51 项（游戏 / 桌面应用 / 覆盖层 / 启动器）
 node tools/verify_backends.mjs    # 三端后端契约 28 项
 node tools/verify_providers.mjs   # 歌词源解析与清洗 36 项
-node tools/verify_lyrics.mjs      # 歌词引擎与时间轴 21 项
+node tools/verify_lyrics.mjs      # 歌词引擎、时间轴与热路径 24 项
 ```
 
 UI 回归（需要 Chrome/Edge，用无头模式 + CDP）：

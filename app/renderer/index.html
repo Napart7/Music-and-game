@@ -768,12 +768,27 @@ window.getfloatRows = function () {
            right: document.querySelectorAll('.side.right .float-row').length,
            drift: getComputedStyle(document.querySelector('.side.left .float-row')).animationName };
 };
+/* rAF hot path: on almost every frame the playhead is still in the same line as the
+ * previous frame, or exactly one line later. Probe those two cases in O(1); seek,
+ * scrubbing backwards and the first frame after a song change still use the binary
+ * search. lyricTimes is always replaced with a fresh array, never mutated in place. */
+let localTimesRef = null, localLastIdx = 0;
 function indexAtLocal(times, pos) {
-  let lo = 0, hi = times.length - 1, ans = 0;
+  if (times !== localTimesRef) { localTimesRef = times; localLastIdx = 0; }
+  const n = times.length;
+  let i = localLastIdx;
+  if (i >= n) i = n - 1;
+  if (i < 0) i = 0;
+  if (n > 0 && times[i] <= pos) {
+    if (i + 1 >= n || times[i + 1] > pos) return i;                       // still this line
+    if (i + 2 >= n || times[i + 2] > pos) { localLastIdx = i + 1; return i + 1; } // next line
+  }
+  let lo = 0, hi = n - 1, ans = 0;
   while (lo <= hi) {
     const m = (lo + hi) >> 1;
     if (times[m] <= pos) { ans = m; lo = m + 1; } else hi = m - 1;
   }
+  localLastIdx = ans;
   return ans;
 }
 function renderLine_OLD_removed() { /* replaced by the floating-row renderer above */ }
