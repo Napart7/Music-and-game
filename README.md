@@ -152,6 +152,15 @@ node tools/gen_changelog.mjs      # 改完 CHANGELOG.md 后生成 app/changelog.
 
 发版：改 `app/package.json` 版本号 → 跑 `gen_changelog.mjs` → `git tag vX.Y.Z` → push tag，GitHub Actions 构建三平台产物并发布 Release。
 
+改完源码想让本机已安装的版本立刻生效，不用等 Release：
+
+```bash
+node tools/patch_installed.cjs             # Windows 默认 D:\软件\GlassLyrics
+node tools/patch_installed.cjs <安装目录>  # 或显式指定
+```
+
+它按 `build.files` 重新打包 `resources/app.asar`、备份旧包，并同步 asar 外的 PowerShell 桥接与 backends 脚本。执行完重启应用即可；脚本不会结束正在运行的进程。
+
 ## 目录结构
 
 ```
