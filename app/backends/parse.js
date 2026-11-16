@@ -4,7 +4,12 @@
 // per line on stdout. This module normalises those lines so the rest of the app never
 // branches on platform again. Unit-tested in tools/verify_backends.mjs.
 
-const STATUS_VALUE = { CLOSED: 0, OPENED: 1, PAUSED: 2, PLAYING: 3, STOPPED: 4, CHANGING: 5, NONE: -1 };
+// Windows.Media.Control SMTC enum, shared by every backend so statusValue means the same
+// thing on all three platforms. 4 = Playing, 5 = Paused (NOT the MediaPlaybackStatus enum).
+const STATUS_VALUE = { CLOSED: 0, OPENED: 1, CHANGING: 2, STOPPED: 3, PLAYING: 4, PAUSED: 5, NONE: -1 };
+const STATUS_BY_VALUE = Object.fromEntries(
+  Object.entries(STATUS_VALUE).map(([k, v]) => [v, k])
+);
 
 function num(v) {
   const n = Number(v);
@@ -18,9 +23,16 @@ function normalizeMedia(d, platformId) {
   // Unknown/garbage statuses must NOT count as "playing", otherwise a broken backend
   // would keep the lyric engine fetching for a track that is not really playing.
   const known = Object.prototype.hasOwnProperty.call(STATUS_VALUE, rawStatus);
-  const status = known ? rawStatus : 'UNKNOWN';
+  const rawValue = Number(d.statusValue);
+  const numericStatus = Number.isFinite(rawValue) && d.statusValue !== undefined &&
+    d.statusValue !== null && d.statusValue !== '' && STATUS_BY_VALUE[rawValue];
+  // The numeric enum comes straight from the OS API; the string is only a label a backend
+  // authors by hand. When they disagree, trust the number -- a wrong label used to report
+  // Playing as STOPPED and freeze the lyric clock between polls.
+  const status = !known ? 'UNKNOWN'
+    : (numericStatus && STATUS_VALUE[rawStatus] !== rawValue ? numericStatus : rawStatus);
   const statusValue = known
-    ? (Number.isFinite(Number(d.statusValue)) ? Number(d.statusValue) : STATUS_VALUE[status])
+    ? (Number.isFinite(rawValue) ? rawValue : STATUS_VALUE[status])
     : -1;
   return {
     ok: d.ok !== false,
@@ -42,6 +54,39 @@ function normalizeMedia(d, platformId) {
     coverChanged: !!d.coverChanged,
     platformId: platformId || d.platformId || '',
     error: d.ok === false ? String(d.error || 'backend-error') : undefined
+  };
+}
+
+/**
+ * Guard against a backend reporting a non-PLAYING status while its timeline keeps
+ * advancing. Long-lived SMTC sessions on some players get stuck reporting STOPPED or
+ * CHANGING mid-playback; the renderer then sets rate=0 and freezes the lyric clock, so
+ * lyrics can only jump once per 500ms poll -- the "stuttering after a while" symptom.
+ *
+ * Two consecutive advancing samples on the SAME track are required before overriding,
+ * so a genuine pause (position frozen), a seek (jump far larger than wall time) and a
+ * track change (different title/artist) are never misread as playback.
+ */
+function createPlaybackStatusWatchdog() {
+  let prev = null;
+  let runs = 0;
+  return function reconcile(d) {
+    if (!d || d.ok === false || d.active === false) { prev = null; runs = 0; return d; }
+    const sameTrack = prev && prev.title === d.title && prev.artist === d.artist;
+    const couldPlay = d.status !== 'PLAYING' && d.status !== 'NONE' && d.status !== 'CLOSED';
+    if (sameTrack && couldPlay) {
+      const dt = (d.sampledAtMs - prev.sampledAtMs) / 1000;
+      const dp = d.position - prev.position;
+      if (dt >= 0.2 && dt <= 3 && dp >= 0.25 && dp <= dt * 1.6) {
+        runs++;
+        if (runs >= 2) {
+          prev = { title: d.title, artist: d.artist, position: d.position, sampledAtMs: d.sampledAtMs };
+          return { ...d, status: 'PLAYING', statusValue: 4 };
+        }
+      } else runs = 0;
+    } else runs = 0;
+    prev = { title: d.title, artist: d.artist, position: d.position, sampledAtMs: d.sampledAtMs };
+    return d;
   };
 }
 
@@ -84,4 +129,5 @@ function normalizeAction(action) {
   return null;
 }
 
-module.exports = { normalizeMedia, parseMediaLine, parseWindowLine, normalizeAction, STATUS_VALUE };
+module.exports = { normalizeMedia, parseMediaLine, parseWindowLine, normalizeAction,
+  STATUS_VALUE, createPlaybackStatusWatchdog };

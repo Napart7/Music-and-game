@@ -34,9 +34,9 @@ while true; do
   fi
 
   case "$status_raw" in
-    Playing) status="PLAYING"; sval=3 ;;
-    Paused)  status="PAUSED";  sval=2 ;;
-    Stopped) status="STOPPED"; sval=4 ;;
+    Playing) status="PLAYING"; sval=4 ;;
+    Paused)  status="PAUSED";  sval=5 ;;
+    Stopped) status="STOPPED"; sval=3 ;;
     *)       emit_none; sleep 0.5; continue ;;
   esac
 

@@ -1,7 +1,7 @@
 # Long-running SMTC reader. Emits one compact JSON object per line on stdout.
 # No third-party dependency: uses WinRT types already present on Windows 10/11.
 # Node spawns this once and streams the lines to the renderer via IPC.
-param([int]$IntervalMs = 500)
+param([int]$IntervalMs = 500, [switch]$Once)
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Runtime.WindowsRuntime | Out-Null
@@ -35,7 +35,11 @@ function Emit($obj) {
 [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackInfo, Windows.Media.Control, ContentType = WindowsRuntime] | Out-Null
 [Windows.Storage.Streams.IRandomAccessStreamReference, Windows.Storage.Streams, ContentType = WindowsRuntime] | Out-Null
 
-$statusNames = @{ 0 = 'CLOSED'; 1 = 'OPENED'; 2 = 'PAUSED'; 3 = 'PLAYING'; 4 = 'STOPPED'; 5 = 'CHANGING' }
+# Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.
+# This is NOT Windows.Media.MediaPlaybackStatus (where 3=Playing / 4=Paused) -- mixing the
+# two silently reported Playing as STOPPED, which froze the lyric clock between 500ms polls.
+# Ref: learn.microsoft.com/uwp/api/windows.media.control.globalsystemmediatransportcontrolssessionplaybackstatus
+$statusNames = @{ 0 = 'CLOSED'; 1 = 'OPENED'; 2 = 'CHANGING'; 3 = 'STOPPED'; 4 = 'PLAYING'; 5 = 'PAUSED' }
 $mgr = $null
 
 while ($true) {
@@ -94,5 +98,6 @@ while ($true) {
         $mgr = $null
         Emit @{ ok = $false; error = $_.Exception.Message }
     }
+    if ($Once) { break }
     Start-Sleep -Milliseconds $IntervalMs
 }

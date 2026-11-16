@@ -130,12 +130,12 @@ npm start          # 开发运行
 npm run dist       # 打包到 ../dist
 ```
 
-回归测试不需要打包，用无头 Chrome/Edge + CDP 跑，共 317 项：
+回归测试不需要打包，用无头 Chrome/Edge + CDP 跑，共 326 项：
 
 ```bash
 node tools/check_compliance.mjs   # 发布门禁 44 项：文件 / 敏感信息 / 语法 / 换行符 / changelog 同步
 node tools/verify_classify.mjs    # 51 项：窗口分类
-node tools/verify_backends.mjs    # 28 项：三端后端与时间轴契约
+node tools/verify_backends.mjs    # 37 项：三端后端、时间轴、SMTC 状态枚举与自愈
 node tools/verify_providers.mjs   # 36 项：歌词源解析、清洗、平台识别
 node tools/verify_lyrics.mjs      # 24 项：歌词引擎、时间轴推进、热路径
 node tools/verify_menu.mjs        # 61 项：菜单、辉光、热键、拖动、漂浮
@@ -145,6 +145,7 @@ node tools/verify_tray_panel.mjs  # 10 项：常驻托盘面板 IPC
 node tools/verify_shatter.mjs     # 12 项：换行破碎飞散
 
 node tools/bench_perf.mjs         # 9 场景帧时间基准
+node tools/bench_longrun.mjs      # 加速长跑：帧时间 / 堆 / DOM / 监听器随时间的变化
 node tools/bench_lyrics.mjs       # 真实网络的歌词连接延迟
 node tools/gen_changelog.mjs      # 改完 CHANGELOG.md 后生成 app/changelog.json
 ```

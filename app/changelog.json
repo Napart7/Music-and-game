@@ -2,6 +2,17 @@
   "generatedFrom": "CHANGELOG.md",
   "versions": [
     {
+      "version": "1.5.1",
+      "date": "2026-11-16",
+      "highlights": [
+        "Windows SMTC 播放状态枚举用错：桥接脚本把 Windows.Media.MediaPlaybackStatus（3=Playing / 4=Paused）当成了 Windows.…",
+        "三端后端的 statusValue 统一为官方枚举（4=Playing / 5=Paused / 3=Stopped / 2=Changing），STATUS_VALUE 常量与 GL_FO…",
+        "契约改为以数值枚举为准：状态字符串只是可读标签，两者冲突时按 OS 原始数值纠正，避免同类错位再次发生。",
+        "增加播放状态自愈：同曲目连续两次采样位置按壁钟推进、但状态仍报 STOPPED / CHANGING 时纠回 PLAYING；暂停、切歌、拖动进度条均不触发。",
+        "smtc-bridge.ps1 增加 -Once 单次采样开关，便于在本机直接核对输出。"
+      ]
+    },
+    {
       "version": "1.5.0",
       "date": "2026-11-16",
       "highlights": [

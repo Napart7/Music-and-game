@@ -2,6 +2,7 @@
 // Runs with plain Node on Windows / macOS / Linux (no Electron, no network).
 
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,23 +22,23 @@ const check = async (name, fn) => {
 
 /* ---------- media line contract: Windows / macOS / Linux samples ---------- */
 const winLine = JSON.stringify({ ok: true, active: true, app: 'QQMusic.exe', title: '孤勇者',
-  artist: '陈奕迅', album: '孤勇者', status: 'PLAYING', statusValue: 3,
+  artist: '陈奕迅', album: '孤勇者', status: 'PLAYING', statusValue: 4,
   position: 12.345, duration: 256.789, hasCover: true });
 
 const macLine = JSON.stringify({ ok: true, active: true, app: 'Spotify', player: 'Spotify',
-  title: 'Starboy', artist: 'The Weeknd', album: 'Starboy', status: 'PAUSED', statusValue: 2,
+  title: 'Starboy', artist: 'The Weeknd', album: 'Starboy', status: 'PAUSED', statusValue: 5,
   position: 41, duration: 230, hasCover: true, coverUrl: 'https://i.scdn.co/image/abc' });
 
 const linuxLine = JSON.stringify({ ok: true, active: true, app: 'spotify', player: 'spotify',
   title: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours',
-  status: 'PLAYING', statusValue: 3, position: 12.5, duration: 200.4,
+  status: 'PLAYING', statusValue: 4, position: 12.5, duration: 200.4,
   hasCover: true, coverUrl: 'file:///tmp/art.jpg' });
 
 await check('Windows 媒体行解析', () => {
   const d = parse.parseMediaLine(winLine);
   assert.equal(d.title, '孤勇者');
   assert.equal(d.status, 'PLAYING');
-  assert.equal(d.statusValue, 3);
+  assert.equal(d.statusValue, 4);
   assert.equal(d.position, 12.345);
 });
 
@@ -45,12 +46,14 @@ await check('macOS 媒体行解析（coverUrl）', () => {
   const d = parse.parseMediaLine(macLine);
   assert.equal(d.app, 'Spotify');
   assert.equal(d.status, 'PAUSED');
+  assert.equal(d.statusValue, 5);
   assert.equal(d.cover, 'https://i.scdn.co/image/abc');
 });
 
 await check('Linux 媒体行解析（MPRIS）', () => {
   const d = parse.parseMediaLine(linuxLine);
   assert.equal(d.status, 'PLAYING');
+  assert.equal(d.statusValue, 4);
   assert.equal(d.duration, 200.4);
   assert.equal(d.cover, 'file:///tmp/art.jpg');
 });
@@ -222,6 +225,101 @@ await check('托盘图标按平台选择格式', () => {
   assert.ok(trayIconName('win32').endsWith('.ico'));
   assert.ok(trayIconName('darwin').endsWith('.png'));
   assert.ok(trayIconName('linux').endsWith('.png'));
+});
+
+/* ---------- SMTC status enum: the exact defect that froze the lyric clock ----------
+ * Windows.Media.Control uses 4=Playing / 5=Paused. The old bridge used the unrelated
+ * Windows.Media.MediaPlaybackStatus values (3=Playing / 4=Paused), so a playing track
+ * was reported as STOPPED, rate became 0 and lyrics could only step once per 500ms poll.
+ * These checks read the shipped scripts so an implementation/test "self-consistent" error
+ * can never slip through again. */
+const OFFICIAL = { 0: 'CLOSED', 1: 'OPENED', 2: 'CHANGING', 3: 'STOPPED', 4: 'PLAYING', 5: 'PAUSED' };
+
+await check('SMTC 枚举常量与官方一致', () => {
+  assert.deepEqual(parse.STATUS_VALUE,
+    { CLOSED: 0, OPENED: 1, CHANGING: 2, STOPPED: 3, PLAYING: 4, PAUSED: 5, NONE: -1 });
+});
+
+await check('Windows 桥接脚本的 statusNames 与官方一致', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'app', 'smtc-bridge.ps1'), 'utf8');
+  const m = src.match(/\$statusNames\s*=\s*@\{([^}]+)\}/);
+  assert.ok(m, 'statusNames map not found in smtc-bridge.ps1');
+  const map = {};
+  for (const hit of m[1].matchAll(/(\d+)\s*=\s*'([A-Z]+)'/g)) map[Number(hit[1])] = hit[2];
+  assert.deepEqual(map, OFFICIAL);
+});
+
+await check('macOS / Linux 后端的 statusValue 也对齐官方枚举', () => {
+  const mac = fs.readFileSync(path.join(ROOT, 'app', 'backends', 'media-mac.js'), 'utf8');
+  const lin = fs.readFileSync(path.join(ROOT, 'app', 'backends', 'media-linux.sh'), 'utf8');
+  assert.match(mac, /playing:\s*\['PLAYING',\s*4\]/);
+  assert.match(mac, /paused:\s*\['PAUSED',\s*5\]/);
+  assert.match(mac, /stopped:\s*\['STOPPED',\s*3\]/);
+  assert.match(lin, /Playing\)\s*status="PLAYING";\s*sval=4/);
+  assert.match(lin, /Paused\)\s*status="PAUSED";\s*sval=5/);
+  assert.match(lin, /Stopped\)\s*status="STOPPED";\s*sval=3/);
+});
+
+await check('数值枚举优先：状态标签写错时自动纠正', () => {
+  // This is the real-world shape: statusValue comes straight from WinRT, status is a label.
+  const d = parse.parseMediaLine(JSON.stringify({
+    ok: true, active: true, status: 'STOPPED', statusValue: 4,
+    title: 'x', position: 10, duration: 200
+  }));
+  assert.equal(d.status, 'PLAYING');
+  assert.equal(d.statusValue, 4);
+  assert.equal(d.active, true);
+});
+
+await check('本机 QQ 音乐采样形态（statusValue=4）判定为播放中', () => {
+  const d = parse.parseMediaLine(JSON.stringify({
+    ok: true, active: true, app: 'Tencent.QQMusic', status: 'PLAYING', statusValue: 4,
+    position: 166.713, duration: 197.403, sampledAtMs: 1794828629476, playbackRate: 1
+  }));
+  const p = PlaybackClock.estimatePosition(d, 1794828629476, 250);
+  assert.ok(Math.abs(p - (166.713 + 0.25)) < 0.01, 'position=' + p);
+});
+
+/* ---------- status watchdog: a stuck non-PLAYING status must not freeze lyrics ---------- */
+const sample = (o = {}) => parse.parseMediaLine(JSON.stringify({
+  ok: true, active: true, title: '孤勇者', artist: '陈奕迅', status: 'STOPPED', statusValue: 3,
+  position: 10, duration: 200, sampledAtMs: 1000, ...o
+}));
+
+await check('状态自愈：连续推进两次才纠回 PLAYING', () => {
+  const r = parse.createPlaybackStatusWatchdog();
+  assert.equal(r(sample({ position: 10, sampledAtMs: 1000 })).status, 'STOPPED');
+  assert.equal(r(sample({ position: 10.5, sampledAtMs: 1500 })).status, 'STOPPED');
+  const d = r(sample({ position: 11, sampledAtMs: 2000 }));
+  assert.equal(d.status, 'PLAYING');
+  assert.equal(d.statusValue, 4);
+});
+
+await check('状态自愈：暂停（位置冻结）不误判', () => {
+  const r = parse.createPlaybackStatusWatchdog();
+  const paused = { status: 'PAUSED', statusValue: 5 };
+  r(sample({ ...paused, position: 10, sampledAtMs: 1000 }));
+  assert.equal(r(sample({ ...paused, position: 10, sampledAtMs: 1500 })).status, 'PAUSED');
+  assert.equal(r(sample({ ...paused, position: 10.02, sampledAtMs: 2000 })).status, 'PAUSED');
+});
+
+await check('状态自愈：切歌 / seek 不误判', () => {
+  const a = parse.createPlaybackStatusWatchdog();
+  a(sample({ position: 10, sampledAtMs: 1000 }));
+  assert.equal(a(sample({ title: '另一首', position: 10.5, sampledAtMs: 1500 })).status, 'STOPPED');
+  const b = parse.createPlaybackStatusWatchdog();
+  b(sample({ position: 10, sampledAtMs: 1000 }));
+  assert.equal(b(sample({ position: 80, sampledAtMs: 1500 })).status, 'STOPPED');
+});
+
+await check('状态自愈：纠回后播放时钟按壁钟平滑推进', () => {
+  const r = parse.createPlaybackStatusWatchdog();
+  r(sample({ position: 10, sampledAtMs: 1000 }));
+  r(sample({ position: 10.5, sampledAtMs: 1500 }));
+  const d = r(sample({ position: 11, sampledAtMs: 2000 }));
+  assert.equal(d.status, 'PLAYING');
+  assert.ok(Math.abs(PlaybackClock.estimatePosition(d, 2000, 250) - 11.25) < 0.01);
+  assert.ok(Math.abs(PlaybackClock.estimatePosition(d, 2000, 500) - 11.5) < 0.01);
 });
 
 /* ---------- path semantics ---------- */

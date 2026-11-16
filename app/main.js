@@ -12,7 +12,8 @@ const fs = require('fs');
 const os = require('os');
 const lyricsEngine = require('./lyrics');
 const { backendFor, trayIconName } = require('./backends');
-const { parseMediaLine, parseWindowLine, normalizeAction } = require('./backends/parse');
+const { parseMediaLine, parseWindowLine, normalizeAction, createPlaybackStatusWatchdog } = require('./backends/parse');
+const reconcilePlaybackStatus = createPlaybackStatusWatchdog();
 
 const ROOT = __dirname;
 // UI smoke tests use an isolated profile and therefore never inherit a running app's
@@ -1059,6 +1060,9 @@ function startBridge() {
       buf = buf.slice(i + 1);
       let d = parseMediaLine(line);
       if (!d) continue;
+      // A stale STOPPED/CHANGING status with an advancing timeline would otherwise freeze
+      // the renderer clock (rate=0) and make lyrics step once per poll instead of smoothly.
+      d = reconcilePlaybackStatus(d);
       if (d.ok === false) {
         // Backend dependency missing (playerctl / Automation permission): surface once.
         if (d.error && d.error !== lastBackendError) {
@@ -1074,7 +1078,7 @@ function startBridge() {
       if (forcedTrack && d.active) {
         const [ft, fa, fd] = forcedTrack.split('|');
         d = { ...d, title: ft, artist: fa || '', album: '',
-              duration: Number(fd) || 231, position: 12, status: 'PLAYING', statusValue: 3 };
+              duration: Number(fd) || 231, position: 12, status: 'PLAYING', statusValue: 4 };
       }
       if (win && !win.isDestroyed()) win.webContents.send('smtc', { ...d, platform: currentPlatformFor(d) });
       maybeSmoke(d);

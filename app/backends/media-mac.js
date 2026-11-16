@@ -20,9 +20,9 @@ function emit(obj) {
 }
 
 var STATUS = {
-  playing: ['PLAYING', 3],
-  paused: ['PAUSED', 2],
-  stopped: ['STOPPED', 4]
+  playing: ['PLAYING', 4],
+  paused: ['PAUSED', 5],
+  stopped: ['STOPPED', 3]
 };
 
 function num(v, fallback) {
@@ -38,7 +38,7 @@ function readPlayer(appName, bundleHint) {
   } catch (e) { return null; }
   var stateStr = 'stopped';
   try { stateStr = String(app.playerState()); } catch (e) { return null; }
-  var mapped = STATUS[stateStr] || ['STOPPED', 4];
+  var mapped = STATUS[stateStr] || ['STOPPED', 3];
   var track = null;
   try { track = app.currentTrack(); } catch (e) { track = null; }
   var out = {
