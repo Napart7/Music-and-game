@@ -39,7 +39,7 @@ jobs:
         run: |
           # A cold runner occasionally starts the browser slower than the CDP budget.
           # One retry per suite keeps a flaky browser launch from failing a release.
-          for suite in menu autofit preview tray_panel; do
+          for suite in menu autofit preview tray_panel shatter; do
             node "tools/verify_${suite}.mjs" && continue
             echo "::warning::verify_${suite} failed, retrying once"
             sleep 5
@@ -78,7 +78,7 @@ jobs:
         run: |
           # Same retry policy as Windows: the first headless launch on a fresh runner is
           # the slowest one and has been seen to miss the CDP window.
-          for suite in menu autofit preview tray_panel; do
+          for suite in menu autofit preview tray_panel shatter; do
             node "tools/verify_${suite}.mjs" && continue
             echo "::warning::verify_${suite} failed, retrying once"
             sleep 5

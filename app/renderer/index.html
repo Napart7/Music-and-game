@@ -285,6 +285,20 @@
     will-change: opacity, transform;
   }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  /* ---- lyric shatter-out: each glyph flies to a random direction on line change ---- */
+  @keyframes shatter-fly {
+    0%   { opacity: 1; transform: translate(0,0) scale(1) rotate(0deg); }
+    100% { opacity: 0; transform: translate(var(--shx,0px), var(--shy,-60px)) scale(var(--shs,.2)) rotate(var(--shr,0deg)); }
+  }
+  .shatter-ghost { position: fixed; inset: 0; pointer-events: none; z-index: 50; overflow: visible; }
+  .shatter-glyph {
+    position: absolute; display: inline-block; pointer-events: none;
+    color: rgb(var(--text-rgb)); -webkit-text-stroke: .5px rgba(0,0,0,.45);
+    text-shadow:
+      0 0 var(--g1) rgba(var(--glow-rgb), calc(var(--ga) * .9)),
+      0 0 var(--g2) rgba(var(--glow-rgb), calc(var(--ga) * .5));
+    animation: shatter-fly var(--shd,.4s) cubic-bezier(.22,.6,.35,1) forwards;
+  }
   body[data-menu-open="1"] #toast { opacity: 0; }   /* the panel covers this area anyway */
 </style>
 </head>
@@ -438,6 +452,7 @@
           <div class="switches">
             <label class="switch"><input type="checkbox" data-cfg="wordPop" checked> 逐字弹跳</label>
             <label class="switch"><input type="checkbox" data-cfg="wiggle" checked> 字摆动（8fps）</label>
+            <label class="switch"><input type="checkbox" data-cfg="shatter"> 换行破碎飞散</label>
             <label class="switch"><input type="checkbox" data-cfg="slam" checked> 整句砸入</label>
             <label class="switch"><input type="checkbox" data-cfg="stroke" checked> 黑色描边</label>
           </div>
@@ -650,6 +665,56 @@ function hashRand(i, tick) {
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* ---------- shatter-out: snapshot the current glyphs and fly them off-screen ----------
+ * Called BEFORE the DOM is rebuilt so bounding rects are still valid.
+ * Each ghost is an absolutely-positioned <span> placed at the glyph's screen coords,
+ * animated purely with CSS, then removed after the animation ends. */
+function launchShatterGhosts() {
+  if (!cfg.shatter || !gEls.length) return;
+  // We only shatter when there is actually something visible (progress > 0 on any char)
+  const anyLit = lastP.some(p => p !== undefined && p > 0);
+  if (!anyLit) return;
+  const seed = performance.now() | 0;
+  // Batch ALL reads before ANY write. Interleaving getBoundingClientRect() with
+  // appendChild() dirties the layout on every iteration and forces N synchronous
+  // reflows per line change — that is exactly the frame hitch a transition must avoid.
+  const rects = gEls.map(el => el.getBoundingClientRect());
+  const glyphStyle = getComputedStyle(gEls[0]);
+  const fontSize = glyphStyle.fontSize, fontWeight = glyphStyle.fontWeight;
+  const frag = document.createDocumentFragment();
+  gEls.forEach((el, i) => {
+    const r = rects[i];
+    if (r.width < 1) return;                // skip spaces
+    const ch = el.dataset.c || el.textContent;
+    const ghost = document.createElement('span');
+    ghost.className = 'shatter-glyph';
+    ghost.textContent = ch;
+    // Random flight vector: scatter in a ~220° arc, most drifting upward
+    const angle = (hashRand(i, seed) * 220 - 110) * (Math.PI / 180);
+    const dist  = 60 + hashRand(i + 500, seed) * 120;
+    const shx   = (Math.sin(angle) * dist).toFixed(1) + 'px';
+    const shy   = (-Math.cos(angle) * dist * (0.6 + hashRand(i + 200, seed) * 0.8)).toFixed(1) + 'px';
+    const shr   = ((hashRand(i + 300, seed) - 0.5) * 180).toFixed(1) + 'deg';
+    const shs   = (0.05 + hashRand(i + 400, seed) * 0.25).toFixed(3);
+    const delay = (hashRand(i + 600, seed) * 80).toFixed(0) + 'ms';
+    const dur   = (280 + hashRand(i + 700, seed) * 220).toFixed(0) + 'ms';
+    ghost.style.cssText = [
+      `left:${r.left.toFixed(1)}px`, `top:${r.top.toFixed(1)}px`,
+      `font-size:${fontSize}`, `font-weight:${fontWeight}`,
+      `--shx:${shx}`, `--shy:${shy}`, `--shr:${shr}`, `--shs:${shs}`,
+      `--shd:${dur}`, `animation-delay:${delay}`
+    ].join(';');
+    frag.appendChild(ghost);
+  });
+  // One single DOM insert for the whole line → one layout, one paint.
+  const container = document.createElement('div');
+  container.className = 'shatter-ghost';
+  container.appendChild(frag);
+  document.body.appendChild(container);
+  // Self-cleanup: longest possible ghost lives ≤ 80 + 500ms
+  setTimeout(() => container.remove(), 620);
 }
 /* Stable per-line drift params: direction / amplitude / speed differ for every row,
  * driven purely by a CSS compositor animation (no JS per frame). */
@@ -1056,7 +1121,7 @@ function tick(now) {
     local = clamp((basePos % STEP) / STEP, 0, 1);
   }
   const key = idx;
-  if (key !== lastKey) { renderLine(idx); lastKey = key; }
+  if (key !== lastKey) { launchShatterGhosts(); renderLine(idx); lastKey = key; }
   const g1 = gEls;
   const wt = Math.floor(now / 125);
   const doWig = wt !== lastWig && cfg.wiggle !== false && !cfg.perfLow;

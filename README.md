@@ -304,16 +304,18 @@ npm run dist         # 打包（NSIS + 便携 exe → ../dist）
 **回归测试**（无需 Electron，headless Chrome/Edge + CDP，共 237 项）：
 
 ```bash
-node tools/check_compliance.mjs   # 门禁：文件 / 敏感信息 / 语法 / .sh 换行符 / changelog 同步
+node tools/check_compliance.mjs   # 门禁 44 项：文件 / 敏感信息 / 语法 / .sh 换行符 / changelog 同步
 node tools/verify_classify.mjs    # 51 项：窗口分类（游戏 / 桌面应用 / 覆盖层 / 启动器）
-node tools/verify_backends.mjs    # 19 项：三端后端契约（媒体 / 窗口 / 路由）
+node tools/verify_backends.mjs    # 28 项：三端后端契约（媒体 / 窗口 / 路由 / 时间轴）
 node tools/verify_providers.mjs   # 36 项：解析 / 清洗 / 平台识别 / 降级
-node tools/verify_lyrics.mjs      # 19 项：歌词引擎 / 缓存
+node tools/verify_lyrics.mjs      # 21 项：歌词引擎 / 时间轴 / 缓存
 node tools/verify_menu.mjs        # 61 项：菜单 / 辉光 / 热键 / 拖动 / 漂浮 / 性能 / Toast / 关于页
 node tools/verify_autofit.mjs     # 22 项：窗口自适应
 node tools/verify_preview.mjs     # 29 项：预览页
+node tools/verify_tray_panel.mjs  # 10 项：常驻托盘面板 IPC 契约
+node tools/verify_shatter.mjs     # 12 项：换行破碎飞散（默认关闭 / 单次插入 / 自动清理）
 
-node tools/bench_perf.mjs         # 性能基准：7 场景帧时间
+node tools/bench_perf.mjs         # 性能基准：9 场景帧时间（含破碎开 / 关对照）
 node tools/bench_lyrics.mjs       # 基准：真实网络歌词连接延迟
 node tools/gen_changelog.mjs      # 改完 CHANGELOG.md 后生成 app/changelog.json
 ```

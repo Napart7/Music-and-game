@@ -52,6 +52,7 @@ const DEFAULTS = {
   glowRadius: 0.5,
   wordPop: true,
   wiggle: true,
+  shatter: false,
   slam: true,
   stroke: true,
   showGuides: false,
@@ -178,17 +179,24 @@ function loadConfig() {
   }
 }
 
+let _saveTimer = null;
 function saveConfig() {
-  try {
-    fs.mkdirSync(USER_DIR, { recursive: true });
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
-    // config.json may hold the user's Spotify client secret — keep it owner-only on POSIX.
-    if (process.platform !== 'win32') {
-      try { fs.chmodSync(CONFIG_FILE, 0o600); } catch { /* best effort */ }
+  // Debounce: hotkey nudges (100ms intervals) and probe updates both call setConfigValue.
+  // Coalescing writes to 300ms avoids blocking the main-process IPC thread on every keystroke.
+  if (_saveTimer) return;
+  _saveTimer = setTimeout(() => {
+    _saveTimer = null;
+    try {
+      fs.mkdirSync(USER_DIR, { recursive: true });
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+      // config.json may hold the user's Spotify client secret — keep it owner-only on POSIX.
+      if (process.platform !== 'win32') {
+        try { fs.chmodSync(CONFIG_FILE, 0o600); } catch { /* best effort */ }
+      }
+    } catch (e) {
+      console.error('[config] save failed', e);
     }
-  } catch (e) {
-    console.error('[config] save failed', e);
-  }
+  }, 300);
 }
 
 /** Linux has no Electron login-item API: use the freedesktop XDG autostart entry. */
@@ -285,6 +293,7 @@ function createWindow() {
       win.webContents.send('panel', false);
       win.webContents.send('edit-mode', false);
       rebuildTray();
+      broadcastTrayPanel();
     }
   });
   win.loadFile(path.join(ROOT, 'renderer', 'index.html'));
@@ -371,6 +380,9 @@ function setEditMode(on) {
   applyClickThrough();
   win.webContents.send('panel', panelOpen);
   win.webContents.send('edit-mode', editMode);
+  // Keep tray tooltip and persistent panel in sync (same as setPanel).
+  rebuildTray();
+  broadcastTrayPanel();
 }
 
 function setLayerVisible(on) {
@@ -520,9 +532,15 @@ function trayPanelSnapshot() {
 function broadcastTrayPanel(force) {
   if (!trayPanel || trayPanel.isDestroyed() || !trayPanel.webContents || trayPanel.webContents.isDestroyed()) return;
   const state = trayPanelSnapshot();
-  const signature = JSON.stringify(state);
-  if (!force && signature === trayPanelSignature) return; // no 500ms playback-poll rerenders
-  trayPanelSignature = signature;
+  // Only the fields the tray panel renders affect whether we need to resend.
+  // Stringifying the whole config (which includes Spotify creds and every hotkey) every
+  // 500ms playback tick was pure waste — compare just the visible slice instead.
+  const sig = JSON.stringify([
+    state.config.lyricSource, state.config.autoFit, state.config.hideWhenNoGame,
+    state.config.openAtLogin, state.layerVisible, state.panelOpen, state.pinned, state.track
+  ]);
+  if (!force && sig === trayPanelSignature) return; // no 500ms playback-poll rerenders
+  trayPanelSignature = sig;
   trayPanel.webContents.send('tray-panel-state', state);
 }
 
@@ -1002,7 +1020,7 @@ function ensureLyrics(d) {
 function warmUpLyricHosts() {
   const hosts = [
     'https://c.y.qq.com/', 'https://music.163.com/', 'https://mobiles.kugou.com/',
-    'https://itunes.apple.com/'
+    'https://itunes.apple.com/', 'https://lrclib.net/'
   ];
   setTimeout(() => {
     for (const u of hosts) {

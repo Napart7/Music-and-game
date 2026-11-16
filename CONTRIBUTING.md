@@ -39,9 +39,9 @@ npm start          # 开发模式启动覆盖层
 ```bash
 node tools/check_compliance.mjs   # 合规门禁：必需文件 / 敏感信息 / 语法 / .sh 换行符 / changelog 同步
 node tools/verify_classify.mjs    # 窗口分类 51 项（游戏 / 桌面应用 / 覆盖层 / 启动器）
-node tools/verify_backends.mjs    # 三端后端契约 19 项
+node tools/verify_backends.mjs    # 三端后端契约 28 项
 node tools/verify_providers.mjs   # 歌词源解析与清洗 36 项
-node tools/verify_lyrics.mjs      # 歌词引擎 19 项
+node tools/verify_lyrics.mjs      # 歌词引擎与时间轴 21 项
 ```
 
 UI 回归（需要 Chrome/Edge，用无头模式 + CDP）：
@@ -50,12 +50,14 @@ UI 回归（需要 Chrome/Edge，用无头模式 + CDP）：
 node tools/verify_menu.mjs        # 主菜单 / 热键 / 穿透 / 性能 / Toast / 关于页 61 项
 node tools/verify_autofit.mjs     # 窗口自适配 22 项
 node tools/verify_preview.mjs     # 独立预览页 29 项
+node tools/verify_tray_panel.mjs  # 常驻托盘面板 IPC 契约 10 项
+node tools/verify_shatter.mjs     # 换行破碎飞散 12 项
 ```
 
 改性能相关代码时再跑基准：
 
 ```bash
-node tools/bench_perf.mjs         # 7 个场景各 2 秒：fps / p95 / 掉帧率
+node tools/bench_perf.mjs         # 9 个场景各 2 秒：fps / p95 / 掉帧率（含破碎开 / 关对照）
 node tools/bench_lyrics.mjs       # 真实网络的连接延迟
 ```
 

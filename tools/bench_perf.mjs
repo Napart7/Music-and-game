@@ -143,6 +143,29 @@ try {
     window.__benchTimer = setInterval(() => { window.renderLine(i % 8); i++; }, 150);
   })()`);
   await ev("clearInterval(window.__benchTimer)");
+
+  // H/I: identical workload, shatter OFF vs ON. Goes through the real tick() path so
+  // launchShatterGhosts() actually runs (renderLine() alone bypasses it).
+  const shatterStorm = `(async () => {
+    window.applyTrack({ status:'PLAYING', position:2, duration:200 });
+    let i = 0;
+    window.__benchTimer = setInterval(() => {
+      window.applyTrack({ status:'PLAYING', position:[2,6,10][i % 3], duration:200 });
+      i++;
+    }, 150);
+  })()`;
+  await bench('H. 切句 x6.7/s · 破碎关', shatterStorm);
+  await ev("clearInterval(window.__benchTimer)");
+  await ev(`(() => {
+    const c = document.querySelector('[data-cfg=shatter]');
+    c.checked = true; c.dispatchEvent(new Event('input'));
+  })()`);
+  await bench('I. 切句 x6.7/s · 破碎开', shatterStorm);
+  await ev("clearInterval(window.__benchTimer)");
+  await ev(`(() => {
+    const c = document.querySelector('[data-cfg=shatter]');
+    c.checked = false; c.dispatchEvent(new Event('input'));
+  })()`);
 } catch (e) {
   console.error('BENCH FAILED:', e.message);
   process.exitCode = 1;
