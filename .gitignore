@@ -24,6 +24,9 @@ netease_cookie.txt
 qqmusic_cookie.txt
 now_playing.*
 
+# 测试临时目录
+tools/.tmp/
+
 # 依赖
 node_modules/
 __pycache__/
