@@ -1,7 +1,7 @@
 # Long-running SMTC reader. Emits one compact JSON object per line on stdout.
 # No third-party dependency: uses WinRT types already present on Windows 10/11.
 # Node spawns this once and streams the lines to the renderer via IPC.
-param([int]$IntervalMs = 500, [switch]$Once)
+param([int]$IntervalMs = 500, [switch]$Once, [int]$Count = 0)
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Runtime.WindowsRuntime | Out-Null
@@ -41,6 +41,10 @@ function Emit($obj) {
 # Ref: learn.microsoft.com/uwp/api/windows.media.control.globalsystemmediatransportcontrolssessionplaybackstatus
 $statusNames = @{ 0 = 'CLOSED'; 1 = 'OPENED'; 2 = 'CHANGING'; 3 = 'STOPPED'; 4 = 'PLAYING'; 5 = 'PAUSED' }
 $mgr = $null
+# -Once is shorthand for -Count 1. -Count lets diagnostics record a fixed number of
+# polls and exit cleanly (Emit writes straight to stdout, so a pipeline cannot cut it).
+if ($Once) { $Count = 1 }
+$emitted = 0
 
 while ($true) {
     try {
@@ -63,22 +67,27 @@ while ($true) {
             $tl = $s.GetTimelineProperties()
             $info = $s.GetPlaybackInfo()
             $sv = [int]$info.PlaybackStatus
+            # Derive the label once. Every state-dependent branch below keys off $name,
+            # never a bare enum number, so changing the table cannot desync behaviour.
+            $name = if ($statusNames.ContainsKey($sv)) { $statusNames[$sv] } else { 'UNKNOWN' }
             $sampledAt = [DateTimeOffset]::UtcNow
             $duration = $tl.EndTime.TotalSeconds
             $position = $tl.Position.TotalSeconds
             $rate = 1.0
             try { if ($info.PlaybackRate -gt 0) { $rate = [double]$info.PlaybackRate } } catch { $rate = 1.0 }
-            if ($sv -eq 3) {
+            if ($name -eq 'PLAYING') {
                 # SMTC Position belongs to LastUpdatedTime, not to the instant we poll it.
-                # Compensate here so polling never produces a sawtooth in word-level lyrics.
+                # QQ Music refreshes that timestamp in uneven steps (measured 0.20-0.70s
+                # per 0.51s poll), so without this the renderer sees a sawtooth: the karaoke
+                # sweep jumps or backtracks at every heartbeat. Cap the age so a stale
+                # session cannot inject a large jump after a pause or a seek.
                 try {
                     $sourceAge = ($sampledAt - [DateTimeOffset]$tl.LastUpdatedTime).TotalSeconds
-                    if ($sourceAge -gt 0) { $position += $sourceAge * $rate }
+                    if ($sourceAge -gt 0 -and $sourceAge -lt 2) { $position += $sourceAge * $rate }
                 } catch { /* older SMTC client: keep its raw position */ }
             }
             if ($position -lt 0) { $position = 0 }
             if ($duration -gt 0 -and $position -gt $duration) { $position = $duration }
-            $name = if ($statusNames.ContainsKey($sv)) { $statusNames[$sv] } else { 'UNKNOWN' }
             Emit @{
                 ok = $true; active = $true
                 app = $s.SourceAppUserModelId
@@ -98,6 +107,7 @@ while ($true) {
         $mgr = $null
         Emit @{ ok = $false; error = $_.Exception.Message }
     }
-    if ($Once) { break }
+    $emitted++
+    if ($Count -gt 0 -and $emitted -ge $Count) { break }
     Start-Sleep -Milliseconds $IntervalMs
 }

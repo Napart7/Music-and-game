@@ -2,6 +2,17 @@
   "generatedFrom": "CHANGELOG.md",
   "versions": [
     {
+      "version": "1.5.2",
+      "date": "2026-11-16",
+      "highlights": [
+        "1.5.1 枚举修正留下的两处漏改：把 SMTC 枚举改成官方值（4 = Playing）时，只改了状态输出表，smtc-bridge.ps1 的时间轴补偿守卫仍写 if ($sv -eq…",
+        "没有补偿时，QQ 音乐的 Position 只按 LastUpdatedTime 阶梯更新（实测每 0.51 秒采样只推进 0.20–0.70 秒），渲染层在每个心跳被重置到旧位置，逐字扫光…",
+        "补偿与 toggle 改为按语义名 / 常量判断，枚举表成为单一真相源；补偿增加 2 秒陈旧度上限，避免暂停或拖动进度条后一次跳很远。",
+        "smtc-bridge.ps1 增加 -Count N 采样上限（-Once 保留为 -Count 1），本机诊断可固定次数采样并正常退出，输出直接写 stdout 不受管道截断影响。",
+        "verify_backends.mjs 37 → 41 项：新增「补偿按 PLAYING 语义触发且标签先于补偿计算」「陈旧度上限」「toggle 常量与 parse.js 一致」「全部 W…"
+      ]
+    },
+    {
       "version": "1.5.1",
       "date": "2026-11-16",
       "highlights": [

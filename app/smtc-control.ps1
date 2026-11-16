@@ -42,7 +42,11 @@ try {
         'next'   { $s.TrySkipNextAsync() }
         'prev'   { $s.TrySkipPreviousAsync() }
         'toggle' {
-            if ([int]$s.GetPlaybackInfo().PlaybackStatus -eq 3) { $s.TryPauseAsync() }
+            # SMTC official enum: 4 = PLAYING (see $statusNames in smtc-bridge.ps1 and
+            # STATUS_VALUE in backends/parse.js). The old bare `3` was the unrelated
+            # MediaPlaybackStatus value and made toggle play instead of pause.
+            $SMTC_PLAYING = 4
+            if ([int]$s.GetPlaybackInfo().PlaybackStatus -eq $SMTC_PLAYING) { $s.TryPauseAsync() }
             else { $s.TryPlayAsync() }
         }
     }

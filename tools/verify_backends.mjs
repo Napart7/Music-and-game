@@ -249,6 +249,40 @@ await check('Windows 桥接脚本的 statusNames 与官方一致', () => {
   assert.deepEqual(map, OFFICIAL);
 });
 
+/* The 1.5.1 enum fix corrected the emitted labels but left two numeric guards behind:
+ * `$sv -eq 3` gated the sourceAge compensation and `PlaybackStatus -eq 3` gated toggle.
+ * 3 means STOPPED in the real SMTC enum, so a playing track lost its timestamp
+ * compensation and the renderer saw a ~0.3s sawtooth at every 500ms poll. These
+ * source-level checks make that class of drift impossible to reintroduce. */
+const bridgeSrc = fs.readFileSync(path.join(ROOT, 'app', 'smtc-bridge.ps1'), 'utf8');
+const controlSrc = fs.readFileSync(path.join(ROOT, 'app', 'smtc-control.ps1'), 'utf8');
+
+await check('桥接的时间戳补偿按 PLAYING 语义触发，且标签先于补偿计算', () => {
+  assert.match(bridgeSrc, /if \(\$name -eq 'PLAYING'\)/);
+  const label = bridgeSrc.indexOf('$name = if ($statusNames.ContainsKey($sv))');
+  const comp = bridgeSrc.indexOf('$sourceAge');
+  assert.ok(label >= 0 && comp > label, 'playback label must be computed before compensation');
+  assert.match(bridgeSrc, /\$position\s*\+=\s*\$sourceAge\s*\*\s*\$rate/);
+});
+
+await check('时间戳补偿限制陈旧度上限，暂停或拖动后不会大跳', () => {
+  assert.match(bridgeSrc, /\$sourceAge\s*-gt\s*0\s*-and\s*\$sourceAge\s*-lt\s*2/);
+});
+
+await check('播放控制 toggle 使用与 parse.js 一致的 PLAYING 值', () => {
+  const m = controlSrc.match(/\$SMTC_PLAYING\s*=\s*(\d+)/);
+  assert.ok(m, 'SMTC_PLAYING constant missing');
+  assert.equal(Number(m[1]), parse.STATUS_VALUE.PLAYING);
+  assert.match(controlSrc, /PlaybackStatus\s*-eq\s*\$SMTC_PLAYING/);
+});
+
+await check('所有 Windows 桥接脚本都不含裸枚举数值判断', () => {
+  for (const f of fs.readdirSync(path.join(ROOT, 'app')).filter((x) => x.endsWith('.ps1'))) {
+    const src = fs.readFileSync(path.join(ROOT, 'app', f), 'utf8');
+    assert.doesNotMatch(src, /(?:PlaybackStatus|\$sv)\s*-eq\s*\d+/, f);
+  }
+});
+
 await check('macOS / Linux 后端的 statusValue 也对齐官方枚举', () => {
   const mac = fs.readFileSync(path.join(ROOT, 'app', 'backends', 'media-mac.js'), 'utf8');
   const lin = fs.readFileSync(path.join(ROOT, 'app', 'backends', 'media-linux.sh'), 'utf8');
