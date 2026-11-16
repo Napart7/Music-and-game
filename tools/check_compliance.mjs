@@ -15,7 +15,8 @@ const required = [
   'README.md', 'LICENSE', 'docs/技术方案.md', 'docs/使用说明.md', 'docs/第三方声明.md',
   'docs/平台适配.md', 'docs/跨平台适配.md', 'docs/自检报告-v1.2.md', 'docs/性能自检-v1.3.md',
   'docs/更新说明-v1.4.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'app/changelog.json',
-  'app/main.js', 'app/preload.js', 'app/lyrics.js', 'app/providers.js', 'app/window-classify.js',
+  'app/main.js', 'app/preload.js', 'app/tray-preload.js', 'app/tray-panel.html',
+  'app/playback-clock.js', 'app/lyrics.js', 'app/providers.js', 'app/window-classify.js',
   'app/backends/index.js', 'app/backends/parse.js',
   'app/backends/media-mac.js', 'app/backends/control-mac.js', 'app/backends/window-mac.js',
   'app/backends/media-linux.sh', 'app/backends/control-linux.sh', 'app/backends/window-linux.sh',
@@ -86,14 +87,16 @@ for (const f of files.filter((x) => x.endsWith('.sh'))) {
 }
 ok('shell 脚本换行符 / shebang 检查完成');
 
-/* 5) renderer inline script parses */
-try {
-  const html = fs.readFileSync(path.join(ROOT, 'app/renderer/index.html'), 'utf8');
-  const m = html.match(/<script>([\s\S]*)<\/script>/);
-  if (!m) throw new Error('no <script> block');
-  new Function(m[1]);
-  ok('渲染层内联脚本可解析');
-} catch (e) { bad('渲染层脚本解析失败', e.message); }
+/* 5) renderer inline scripts parse (external scripts are checked as app/*.js above) */
+for (const name of ['app/renderer/index.html', 'app/tray-panel.html']) {
+  try {
+    const html = fs.readFileSync(path.join(ROOT, name), 'utf8');
+    const blocks = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+    if (!blocks.length) throw new Error('no inline <script> block');
+    for (const m of blocks) new Function(m[1]);
+    ok('内联脚本可解析 ' + name);
+  } catch (e) { bad('渲染层脚本解析失败 ' + name, e.message); }
+}
 
 console.log('\n' + (failures.length ? failures.length + ' 项失败' : '全部通过'));
 process.exit(failures.length ? 1 : 0);

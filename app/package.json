@@ -1,6 +1,6 @@
 {
   "name": "glasslyrics",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Cross-game transparent lyric overlay. No injection, no game memory access.",
   "homepage": "https://github.com/Napart7/Music-and-game",
   "main": "main.js",
@@ -25,6 +25,9 @@
     "files": [
       "main.js",
       "preload.js",
+      "tray-preload.js",
+      "tray-panel.html",
+      "playback-clock.js",
       "lyrics.js",
       "providers.js",
       "window-classify.js",

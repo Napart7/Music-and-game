@@ -565,6 +565,7 @@
   <button class="act primary" id="editDone">完成</button>
 </div>
 
+<script src="../playback-clock.js"></script>
 <script>
 const DEMO_LINES = [
   { t: '屏幕微光落在窗台', tr: 'A faint glow rests on the sill' },
@@ -718,7 +719,7 @@ function setText(id, v) {
 }
 window.applyTrack = function (d) {
   if (!d) return;
-  state = Object.assign({}, state, d, { recvAt: performance.now() });
+  state = Object.assign({}, state, d, { recvAt: performance.now(), recvWall: Date.now() });
   const st = $('status'); if (st) st.textContent = label(state.status);  // legacy hook, HUD removed
   setText('pTitle', state.title || '—');
   setText('pArtist', [state.artist, state.album].filter(Boolean).join(' / ') || '—');
@@ -896,6 +897,9 @@ window.getLyricState = function () {
            wordSync: !!(lyricMeta && lyricMeta.wordSync), charMode };
 };
 window.setLyricOffset = function (ms) { lyricOffsetMs = Number(ms) || 0; return lyricOffsetMs; };
+window.getPlaybackPosition = function (elapsedMs) {
+  return window.PlaybackClock.estimatePosition(state, state.recvWall, elapsedMs || 0);
+};
 
 /* ---------------- main menu ---------------- */
 window.setPanel = function (on) {
@@ -1033,9 +1037,10 @@ function tick(now) {
   if (frameAcc < budget - 1) return;
   frameAcc = Math.max(0, frameAcc - budget);
   window.__w.frames++;
-  const hasTimeline = state.duration > 0;
+  const hasTimeline = state.duration > 0 ||
+    (lyricMode === 'real' && lyricTimes.length && ['PLAYING', 'PAUSED'].includes(state.status));
   const basePos = hasTimeline
-    ? state.position + clamp((now - state.recvAt) / 1000, 0, 2)
+    ? window.PlaybackClock.estimatePosition(state, state.recvWall, now - state.recvAt)
     : (now - demoStart) / 1000;
   const pos = Math.max(0, basePos + lyricOffsetMs / 1000);
   let idx, local;

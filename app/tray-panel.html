@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:;">
+<title>GlassLyrics 常驻菜单</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  body { padding: 6px; color: #eef5ff; font: 13px/1.45 system-ui, -apple-system, "Microsoft YaHei", sans-serif; user-select: none; }
+  button, select, input { font: inherit; }
+  .card { height: 100%; display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(197,222,255,.2); border-radius: 18px;
+    background: linear-gradient(145deg, rgba(27,39,61,.97), rgba(10,17,29,.97)); box-shadow: inset 0 1px rgba(255,255,255,.1), 0 18px 50px rgba(0,0,0,.38); }
+  .head { display: flex; align-items: center; gap: 10px; padding: 15px 15px 12px; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .mark { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; color: #b9dcff; background: rgba(117,181,255,.12); font-weight: 700; }
+  .title { flex: 1; min-width: 0; }
+  .title strong { display: block; font-size: 14px; letter-spacing: .02em; }
+  .title small { color: #91a4bd; font-size: 10px; }
+  .pin { padding: 2px 7px; border: 1px solid rgba(112,208,190,.22); border-radius: 20px; color: #9ce0d1; background: rgba(71,173,150,.09); font-size: 10px; }
+  .close { width: 27px; height: 27px; border: 0; border-radius: 8px; color: #aebdd0; background: transparent; cursor: pointer; font-size: 18px; }
+  .close:hover { color: white; background: rgba(255,255,255,.08); }
+  .body { flex: 1; overflow-y: auto; padding: 12px 13px; }
+  .body::-webkit-scrollbar { width: 4px; }
+  .body::-webkit-scrollbar-thumb { background: rgba(180,205,240,.2); border-radius: 4px; }
+  .now { padding: 11px 12px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,.07); border-radius: 12px; background: rgba(255,255,255,.035); }
+  #track { overflow: hidden; color: #f5f8ff; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  #artist { overflow: hidden; margin-top: 2px; color: #91a4bd; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+  .label { display: block; margin: 13px 2px 7px; color: #8298b5; font-size: 10px; letter-spacing: .12em; }
+  .btn { width: 100%; padding: 10px 11px; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; color: #dce9fb; background: rgba(255,255,255,.045); cursor: pointer; text-align: left; }
+  .btn:hover { border-color: rgba(142,196,255,.3); background: rgba(122,177,241,.1); }
+  .btn.primary { color: #eef7ff; background: linear-gradient(135deg, rgba(65,137,220,.4), rgba(75,114,184,.25)); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .transport { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 7px; margin-top: 8px; }
+  .transport .btn { padding: 8px; text-align: center; font-size: 12px; }
+  .select { width: 100%; padding: 9px 10px; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; outline: none; color: #e3efff; background: #1b2940; cursor: pointer; }
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 39px; padding: 7px 2px; border-bottom: 1px solid rgba(255,255,255,.055); cursor: pointer; }
+  .switch:last-child { border: 0; }
+  .switch input { width: 16px; height: 16px; accent-color: #70aef4; cursor: pointer; }
+  .foot { padding: 10px 14px 12px; border-top: 1px solid rgba(255,255,255,.07); }
+  .hint { color: #7f93ac; font-size: 10px; text-align: center; }
+  .quit { display: block; margin: 7px auto 0; border: 0; color: #a98e99; background: none; cursor: pointer; font-size: 10px; }
+  .quit:hover { color: #ffb5c5; }
+</style>
+</head>
+<body>
+<main class="card" id="trayPanel">
+  <header class="head">
+    <div class="mark">GL</div>
+    <div class="title"><strong>GlassLyrics</strong><small>托盘快捷控制</small></div>
+    <span class="pin">已固定</span>
+    <button class="close" id="close" title="关闭常驻菜单" aria-label="关闭常驻菜单">×</button>
+  </header>
+  <div class="body">
+    <section class="now"><div id="track">等待播放器</div><div id="artist">菜单已固定，不会因失焦或状态刷新关闭</div></section>
+    <button class="btn primary" id="toggleLayer">隐藏歌词覆盖层</button>
+    <div class="transport">
+      <button class="btn" data-action="prev">上一首</button>
+      <button class="btn" data-action="toggle" id="playPause">播放 / 暂停</button>
+      <button class="btn" data-action="next">下一首</button>
+    </div>
+    <span class="label">主控制面板</span>
+    <button class="btn" id="togglePanel">打开主菜单</button>
+    <label class="label" for="source">歌词来源</label>
+    <select class="select" id="source">
+      <option value="auto">自动（跟随播放器）</option>
+      <option value="qqmusic">QQ 音乐优先</option>
+      <option value="netease">网易云音乐优先</option>
+      <option value="kugou">酷狗音乐优先</option>
+      <option value="lrclib">LRCLIB 优先</option>
+      <option value="off">关闭在线歌词</option>
+    </select>
+    <span class="label">窗口与启动</span>
+    <label class="switch"><span>自动捕捉游戏窗口</span><input type="checkbox" data-key="autoFit"></label>
+    <label class="switch"><span>切出游戏时隐藏歌词</span><input type="checkbox" data-key="hideWhenNoGame"></label>
+    <label class="switch"><span>开机自动启动</span><input type="checkbox" data-key="openAtLogin"></label>
+  </div>
+  <footer class="foot">
+    <div class="hint">点击选项不收起 · Esc / 再次右键托盘关闭</div>
+    <button class="quit" id="quit">退出 GlassLyrics</button>
+  </footer>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let current = null;
+function text(id, value) { const el = $(id); if (el.textContent !== value) el.textContent = value; }
+function render(s) {
+  if (!s) return;
+  current = s;
+  const c = s.config || {};
+  text('toggleLayer', s.layerVisible ? '隐藏歌词覆盖层' : '显示歌词覆盖层');
+  text('togglePanel', s.panelOpen ? '收起主菜单' : '打开主菜单');
+  text('playPause', s.track && s.track.status === 'PLAYING' ? '暂停播放' : '继续播放');
+  text('track', s.track && s.track.title ? s.track.title : '等待播放器');
+  text('artist', s.track && s.track.title ? [s.track.artist, s.track.status === 'PLAYING' ? '播放中' : '已暂停'].filter(Boolean).join(' · ') : '菜单已固定，不会因失焦或状态刷新关闭');
+  if (document.activeElement !== $('source')) $('source').value = c.lyricSource || 'auto';
+  document.querySelectorAll('[data-key]').forEach((el) => {
+    if (document.activeElement !== el) el.checked = !!c[el.dataset.key];
+  });
+  return { layerVisible: s.layerVisible, panelOpen: s.panelOpen, source: c.lyricSource };
+}
+window.renderTrayState = render;
+window.getTrayPanelState = () => current;
+$('close').addEventListener('click', () => window.glassTray.action('close'));
+$('toggleLayer').addEventListener('click', () => window.glassTray.action('toggle-layer'));
+$('togglePanel').addEventListener('click', () => window.glassTray.action('toggle-panel'));
+document.querySelectorAll('[data-action]').forEach((el) => el.addEventListener('click', () => window.glassTray.action(el.dataset.action)));
+$('source').addEventListener('change', (e) => window.glassTray.setConfig('lyricSource', e.target.value));
+document.querySelectorAll('[data-key]').forEach((el) => el.addEventListener('change', () => window.glassTray.setConfig(el.dataset.key, el.checked)));
+$('quit').addEventListener('click', () => window.glassTray.action('quit'));
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape') window.glassTray.action('close'); });
+if (window.glassTray) {
+  window.glassTray.onState(render);
+  window.glassTray.getState().then(render);
+}
+</script>
+</body>
+</html>

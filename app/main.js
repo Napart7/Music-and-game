@@ -15,6 +15,9 @@ const { backendFor, trayIconName } = require('./backends');
 const { parseMediaLine, parseWindowLine, normalizeAction } = require('./backends/parse');
 
 const ROOT = __dirname;
+// UI smoke tests use an isolated profile and therefore never inherit a running app's
+// single-instance lock or overwrite the user's real configuration.
+if (process.env.GL_TEST_USER_DATA) app.setPath('userData', path.resolve(process.env.GL_TEST_USER_DATA));
 const RES = app.isPackaged ? process.resourcesPath : ROOT;
 // Every OS-specific script / interpreter is resolved here and only here.
 const BACKEND = backendFor(process.platform, (name) => path.join(RES, name));
@@ -91,6 +94,8 @@ const { classifyWindow } = require('./window-classify');
 
 let win = null;
 let tray = null;
+let trayPanel = null;   // independent persistent menu; never follows overlay hide/blur
+let trayPanelSignature = '';
 let bridge = null;
 let windowProbe = null;
 let panelOpen = false;
@@ -347,6 +352,7 @@ function setTopLevel(level) {
   topLevel = level;
   winCalls.top++;
   try { win.setAlwaysOnTop(true, level); } catch { /* ignore unsupported level */ }
+  keepPinnedTrayAboveOverlay();
 }
 
 function setPanel(on) {
@@ -355,6 +361,7 @@ function setPanel(on) {
   applyClickThrough();
   win.webContents.send('panel', panelOpen);
   rebuildTray();
+  broadcastTrayPanel();
 }
 
 function setEditMode(on) {
@@ -372,12 +379,16 @@ function setLayerVisible(on) {
   if (layerVisible === on) return;
   layerVisible = on;
   if (!win || win.isDestroyed()) return;
-  if (layerVisible) { winCalls.show++; win.showInactive(); }
-  else { winCalls.hide++; win.hide(); }
+  if (layerVisible) {
+    winCalls.show++;
+    win.showInactive();
+    keepPinnedTrayAboveOverlay();
+  } else { winCalls.hide++; win.hide(); }
   win.webContents.send('visible', layerVisible);
   // A freshly shown window may come back as clickable — re-assert transparency.
   applyClickThrough(true);
   rebuildTray();
+  broadcastTrayPanel();
 }
 
 /**
@@ -447,6 +458,9 @@ function buildTrayMenu() {
   return Menu.buildFromTemplate([
     { label: 'GlassLyrics', enabled: false },
     { type: 'separator' },
+    { label: trayPanel && !trayPanel.isDestroyed() ? '关闭常驻菜单' : '打开常驻菜单',
+      click: () => togglePinnedTray() },
+    { type: 'separator' },
     { label: layerVisible ? '隐藏覆盖层' : '显示覆盖层', click: () => setLayerVisible(!layerVisible) },
     { label: panelOpen ? '收起主菜单' : '打开主菜单', click: () => setPanel(!panelOpen) },
     { type: 'separator' },
@@ -484,6 +498,121 @@ function buildTrayMenu() {
   ]);
 }
 
+/* ---------------- persistent tray menu ----------------
+ * Native menus are intentionally transient: the OS dismisses them on activation changes
+ * and after every command. A separate small BrowserWindow is the only reliable way to
+ * provide the requested persistent behaviour. Unlike the lyric overlay it is clickable
+ * ONLY inside its own small bounds and has no blur auto-close handler. */
+function trayPanelSnapshot() {
+  const safeConfig = { ...config };
+  delete safeConfig.spotifyClientSecret;
+  return {
+    config: safeConfig,
+    layerVisible,
+    panelOpen,
+    pinned: !!(trayPanel && !trayPanel.isDestroyed()),
+    track: lastSmtc && lastSmtc.active ? {
+      title: lastSmtc.title || '', artist: lastSmtc.artist || '', status: lastSmtc.status || ''
+    } : null
+  };
+}
+
+function broadcastTrayPanel(force) {
+  if (!trayPanel || trayPanel.isDestroyed() || !trayPanel.webContents || trayPanel.webContents.isDestroyed()) return;
+  const state = trayPanelSnapshot();
+  const signature = JSON.stringify(state);
+  if (!force && signature === trayPanelSignature) return; // no 500ms playback-poll rerenders
+  trayPanelSignature = signature;
+  trayPanel.webContents.send('tray-panel-state', state);
+}
+
+function keepPinnedTrayAboveOverlay() {
+  if (!trayPanel || trayPanel.isDestroyed() || !trayPanel.isVisible()) return;
+  // The overlay may legitimately change z-order/bounds when a game is captured. Re-raise
+  // only on those transitions, not on a heartbeat; showInactive never steals menu focus.
+  try { trayPanel.showInactive(); } catch { /* best effort on older shells */ }
+}
+
+function trayPanelPosition(anchor, width, height) {
+  const fallback = screen.getCursorScreenPoint();
+  const a = anchor && Number.isFinite(anchor.x) && (anchor.width || anchor.height)
+    ? anchor : { x: fallback.x, y: fallback.y, width: 0, height: 0 };
+  const cx = a.x + (a.width || 0) / 2;
+  const cy = a.y + (a.height || 0) / 2;
+  const area = screen.getDisplayNearestPoint({ x: Math.round(cx), y: Math.round(cy) }).workArea;
+  let x = Math.round(cx - width / 2);
+  // Windows taskbar is usually at the bottom; macOS menu bar is at the top. If there is
+  // not enough room, flip to the other side and finally clamp to the usable work area.
+  let y = process.platform === 'win32'
+    ? Math.round(a.y - height - 10)
+    : Math.round(a.y + (a.height || 0) + 10);
+  if (y < area.y) y = Math.round(a.y + (a.height || 0) + 10);
+  if (y + height > area.y + area.height) y = Math.round(a.y - height - 10);
+  x = Math.max(area.x + 8, Math.min(x, area.x + area.width - width - 8));
+  y = Math.max(area.y + 8, Math.min(y, area.y + area.height - height - 8));
+  return { x, y, width, height };
+}
+
+function closePinnedTray() {
+  if (!trayPanel || trayPanel.isDestroyed()) return;
+  const p = trayPanel;
+  trayPanel = null;
+  trayPanelSignature = '';
+  try { p.close(); } catch { /* already closing */ }
+  rebuildTray();
+}
+
+function openPinnedTray(anchor) {
+  if (trayPanel && !trayPanel.isDestroyed()) {
+    keepPinnedTrayAboveOverlay();
+    return trayPanel;
+  }
+  const size = trayPanelPosition(anchor, 316, 568);
+  trayPanel = new BrowserWindow({
+    ...size,
+    title: 'GlassLyricsTrayPanel',
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: true,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    show: false,
+    hasShadow: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(ROOT, 'tray-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      backgroundThrottling: true
+    }
+  });
+  trayPanel.setAlwaysOnTop(true, 'screen-saver');
+  if (process.platform === 'darwin') {
+    try { trayPanel.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); } catch { /* older macOS */ }
+  }
+  trayPanel.on('closed', () => {
+    trayPanel = null;
+    trayPanelSignature = '';
+    rebuildTray();
+  });
+  trayPanel.webContents.on('did-finish-load', () => broadcastTrayPanel(true));
+  trayPanel.loadFile(path.join(ROOT, 'tray-panel.html'));
+  trayPanel.once('ready-to-show', () => {
+    if (trayPanel && !trayPanel.isDestroyed()) trayPanel.show();
+  });
+  rebuildTray();
+  return trayPanel;
+}
+
+function togglePinnedTray(anchor) {
+  if (trayPanel && !trayPanel.isDestroyed()) closePinnedTray();
+  else openPinnedTray(anchor);
+}
+
 /**
  * Refresh the tray tooltip only.
  *
@@ -503,11 +632,11 @@ let trayFallback = false;   // set if popUpContextMenu ever fails on this system
 function rebuildTray() {
   if (!tray) return;
   try {
-    tray.setToolTip(`GlassLyrics · ${layerVisible ? '显示中' : '已隐藏'}${panelOpen ? ' · 菜单已打开' : ''}`);
+    tray.setToolTip(`GlassLyrics · ${layerVisible ? '显示中' : '已隐藏'}${panelOpen ? ' · 菜单已打开' : ''}${trayPanel && !trayPanel.isDestroyed() ? ' · 常驻菜单已固定' : ''}`);
   } catch { /* tooltip is cosmetic */ }
   if (TRAY_ON_DEMAND && !trayFallback) return;
   const sig = JSON.stringify([layerVisible, panelOpen, config.lyricSource, config.autoFit,
-    config.hideWhenNoGame, config.displayIndex]);
+    config.hideWhenNoGame, config.displayIndex, !!(trayPanel && !trayPanel.isDestroyed())]);
   if (sig === traySignature) return;
   traySignature = sig;
   try { tray.setContextMenu(buildTrayMenu()); } catch { /* tray is cosmetic */ }
@@ -538,9 +667,10 @@ function createTray() {
   try {
     tray = new Tray(img);
     if (TRAY_ON_DEMAND) {
-      // Build the menu at click time so a background state change can never replace
-      // (and thereby close) a menu the user is looking at.
-      tray.on('right-click', popupTrayMenu);
+      // Right-click opens the persistent panel. Left-click keeps the familiar native menu,
+      // whose first command can also open the persistent panel. No native menu is installed
+      // in advance, so background state changes cannot dismiss one that is already open.
+      tray.on('right-click', (_event, bounds) => togglePinnedTray(bounds));
       tray.on('click', popupTrayMenu);
     }
     rebuildTray();
@@ -589,6 +719,7 @@ function resetToDisplay() {
   if (!sameBounds(lastAppliedBounds, bounds)) {
     win.setBounds(bounds);
     lastAppliedBounds = bounds;
+    keepPinnedTrayAboveOverlay();
   }
   autoFitState.active = false;
   autoFitState.bounds = bounds;
@@ -664,6 +795,7 @@ function applyWindowFit(info) {
   if (!sameBounds(lastAppliedBounds, bounds)) {
     win.setBounds(bounds);
     lastAppliedBounds = bounds;
+    keepPinnedTrayAboveOverlay();
     console.log('[fit]', info.process, JSON.stringify(bounds), cls.reason);
   }
   autoFitState.active = true;
@@ -722,10 +854,14 @@ function setConfigValue(patch) {
     if (lastWindowInfo) applyWindowFit(lastWindowInfo);
   }
   rebuildTray();
+  broadcastTrayPanel();
   return config;
 }
 
 function maybeSmoke(d) {
+  // Diagnostics are opt-in. Production playback must not run three song searches, DOM
+  // probes and a disk write merely because the first media sample arrived.
+  if (!process.env.GL_SMOKE && !process.env.GL_SMOKE_OUT) return;
   if (smokeDone || !d.ok || !d.active || !loaded || !win || win.isDestroyed()) return;
   smokeDone = true;
   // window-probe.ps1 compiles a small C# helper on first launch (~2s). Wait for it so the
@@ -785,7 +921,9 @@ function maybeSmoke(d) {
     win.webContents.executeJavaScript(probe).then((dom) => {
       const out = {
         ok: true, at: new Date().toISOString(), electron: process.versions.electron,
-        packaged: app.isPackaged, hotkeys, config, smtc: d, dom,
+        packaged: app.isPackaged, hotkeys,
+        config: (() => { const safe = { ...config }; delete safe.spotifyClientSecret; return safe; })(),
+        smtc: d, dom,
         winApi: { ...winCalls }, trayRebuilds,
         tray: (() => {
           try {
@@ -822,8 +960,8 @@ function currentPlatformFor(d) {
 }
 
 function ensureLyrics(d) {
+  if (d) lastSmtc = d;
   if (!d || !d.ok || !d.active) return;
-  lastSmtc = d;
   currentPlatform = currentPlatformFor(d);
   if (effectiveLyricSource() === 'off') {
     if (win && !win.isDestroyed()) win.webContents.send('lyrics', { ok: false, error: 'lyrics-disabled' });
@@ -917,6 +1055,7 @@ function startBridge() {
       if (win && !win.isDestroyed()) win.webContents.send('smtc', { ...d, platform: currentPlatformFor(d) });
       maybeSmoke(d);
       ensureLyrics(d);
+      broadcastTrayPanel();
     }
   });
   bridge.stderr.on('data', (d) => console.error('[smtc]', d.toString().trim()));
@@ -942,6 +1081,20 @@ function runControl(action) {
 ipcMain.handle('get-config', () => config);
 ipcMain.handle('get-platform', () => currentPlatform);
 ipcMain.handle('get-hotkeys', () => ({ ...hotkeys }));
+ipcMain.handle('tray-panel-state', () => trayPanelSnapshot());
+ipcMain.handle('tray-panel-config', (_e, { key, value } = {}) => {
+  const sources = ['auto', 'qqmusic', 'netease', 'kugou', 'lrclib', 'off'];
+  if (key === 'lyricSource' && sources.includes(value)) return setConfigValue({ lyricSource: value });
+  if (['autoFit', 'hideWhenNoGame', 'openAtLogin'].includes(key)) return setConfigValue({ [key]: !!value });
+  return config;
+});
+ipcMain.on('tray-panel-action', (_e, action) => {
+  if (action === 'close') closePinnedTray();
+  else if (action === 'toggle-layer') setLayerVisible(!layerVisible);
+  else if (action === 'toggle-panel') setPanel(!panelOpen);
+  else if (['prev', 'next', 'toggle'].includes(action)) runControl(action);
+  else if (action === 'quit') app.quit();
+});
 
 /** Version + platform + the newest changelog entries, for the in-app About page.
  *  changelog.json is generated from CHANGELOG.md by tools/gen_changelog.mjs and shipped
@@ -1027,7 +1180,10 @@ ipcMain.on('dismiss-overlay', () => {
 });
 ipcMain.on('quit-app', () => app.quit());
 ipcMain.on('cycle-layout', () => win && win.webContents.send('cycle-layout'));
-ipcMain.handle('get-click-state', () => ({ clickThrough: lastIgnore === true, panelOpen, editMode }));
+ipcMain.handle('get-click-state', () => ({
+  clickThrough: lastIgnore === true, panelOpen, editMode,
+  trayPanelPinned: !!(trayPanel && !trayPanel.isDestroyed())
+}));
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -1063,6 +1219,46 @@ if (!gotLock) {
     // sandboxed test runner, so this exercises everything downstream of it — the nudge,
     // config persistence, the lyric-offset IPC and the toast text in the renderer —
     // then restores the user's original offset.
+    // Persistent-tray regression: open the same panel used by tray right-click, force the
+    // exact state updates that used to dismiss native menus, then verify it stays visible
+    // and the fullscreen lyric window remains click-through.
+    if (process.env.GL_TEST_TRAY_PIN === '1') {
+      setTimeout(() => openPinnedTray(), 1800);
+      setTimeout(() => {
+        setLayerVisible(false);
+        setLayerVisible(true);
+        setConfigValue({ autoFit: !!config.autoFit, hideWhenNoGame: !!config.hideWhenNoGame });
+        rebuildTray();
+      }, 3000);
+      setTimeout(async () => {
+        const p = trayPanel;
+        const state = {
+          ok: !!(p && !p.isDestroyed() && p.isVisible()),
+          visibleAfterRefresh: !!(p && !p.isDestroyed() && p.isVisible()),
+          overlayClickThrough: lastIgnore === true && !panelOpen && !editMode,
+          bounds: p && !p.isDestroyed() ? p.getBounds() : null,
+          dom: null,
+          closeVerified: false
+        };
+        if (p && !p.isDestroyed()) {
+          try { state.dom = await p.webContents.executeJavaScript('window.getTrayPanelState()'); }
+          catch (e) { state.dom = { error: e.message }; }
+        }
+        closePinnedTray();
+        await new Promise((r) => setTimeout(r, 150));
+        state.closeVerified = !trayPanel;
+        state.ok = state.ok && state.overlayClickThrough && state.closeVerified &&
+          !!(state.dom && state.dom.pinned);
+        console.log('[tray-pin-test]', JSON.stringify(state));
+        const target = process.env.GL_TRAY_PIN_OUT || path.join(USER_DIR, 'tray-pin-test.json');
+        try {
+          fs.mkdirSync(path.dirname(target), { recursive: true });
+          fs.writeFileSync(target, JSON.stringify(state, null, 2), 'utf8');
+        } catch (e) { console.error(e); }
+        if (process.env.GL_TRAY_PIN_QUIT === '1') setTimeout(() => app.quit(), 200);
+      }, 6500);
+    }
+
     // Window-churn measurement: counts Win32 window calls (and tray rebuilds) during an
     // idle 8s window. A fullscreen always-on-top window must sit at 0 while nothing
     // changes — every extra call re-raises it above other apps' menus.

@@ -1,0 +1,69 @@
+{
+  "ok": true,
+  "visibleAfterRefresh": true,
+  "overlayClickThrough": true,
+  "bounds": {
+    "x": 966,
+    "y": 490,
+    "width": 318,
+    "height": 570
+  },
+  "dom": {
+    "config": {
+      "openAtLogin": false,
+      "displayIndex": 0,
+      "layout": "split",
+      "glowTint": "white",
+      "glowStrength": 0.3,
+      "glowRadius": 0.5,
+      "wordPop": true,
+      "wiggle": true,
+      "slam": true,
+      "stroke": true,
+      "showGuides": false,
+      "fontScale": 1,
+      "showTranslation": true,
+      "menuTab": "play",
+      "hotkeys": {
+        "panel": "Control+Alt+P",
+        "toggle": "Control+Alt+H",
+        "layout": "Control+Alt+B",
+        "fit": "Control+Alt+F",
+        "offsetEarlier": "Control+Alt+PageUp",
+        "offsetLater": "Control+Alt+PageDown",
+        "quit": "Control+Shift+Alt+Q",
+        "prev": "",
+        "next": "",
+        "playpause": ""
+      },
+      "lyricPos": {
+        "left": null,
+        "right": null
+      },
+      "sideWidth": 28,
+      "lineHeight": 1.5,
+      "fontWeight": 600,
+      "lyricOpacity": 1,
+      "floatLines": 4,
+      "floatDrift": true,
+      "perfLow": false,
+      "autoFit": true,
+      "hideWhenNoGame": false,
+      "excludeProcesses": [],
+      "minWindowWidth": 640,
+      "minWindowHeight": 400,
+      "lyricSource": "auto",
+      "lyricOffsetMs": 0,
+      "spotifyClientId": ""
+    },
+    "layerVisible": true,
+    "panelOpen": false,
+    "pinned": true,
+    "track": {
+      "title": "Take Over",
+      "artist": "Mizz Nina",
+      "status": "CHANGING"
+    }
+  },
+  "closeVerified": true
+}

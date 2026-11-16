@@ -33,6 +33,10 @@ function normalizeMedia(d, platformId) {
     statusValue,
     position: num(d.position),
     duration: num(d.duration),
+    // sampledAtMs is the capture time on the same machine, not the lyric line timestamp.
+    // Main fills it at stdout receipt if an older/external backend does not provide it.
+    sampledAtMs: Number.isFinite(Number(d.sampledAtMs)) ? Number(d.sampledAtMs) : Date.now(),
+    playbackRate: num(d.playbackRate) > 0 ? num(d.playbackRate) : 1,
     hasCover: !!d.hasCover || !!(d.cover || d.coverUrl),
     cover: d.cover || d.coverUrl || null,
     coverChanged: !!d.coverChanged,

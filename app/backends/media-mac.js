@@ -105,6 +105,8 @@ while (true) {
   } catch (e) {
     payload = { ok: false, error: 'jxa:' + (e && e.message ? e.message : 'unknown') };
   }
+  payload.sampledAtMs = Date.now();
+  payload.playbackRate = num(payload.playbackRate, 1) || 1;
   emit(payload);
   sleepMs(500);
 }

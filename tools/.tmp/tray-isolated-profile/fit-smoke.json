@@ -1,0 +1,49 @@
+{
+  "ok": true,
+  "at": "2026-11-16T09:54:46.874Z",
+  "autoFit": {
+    "active": false,
+    "reason": "non-game-app",
+    "excluded": false,
+    "ratio": null,
+    "process": "explorer",
+    "title": "",
+    "className": "Shell_TrayWnd",
+    "rect": [
+      0,
+      1019,
+      1707,
+      48
+    ],
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1707,
+      "height": 1067
+    },
+    "scale": 1.5
+  },
+  "appliedBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 1708,
+    "height": 1068
+  },
+  "windowProbe": {
+    "rect": [
+      0,
+      1019,
+      1707,
+      48
+    ],
+    "rectPhysical": [
+      0,
+      1528,
+      2560,
+      72
+    ],
+    "title": "",
+    "className": "Shell_TrayWnd",
+    "process": "explorer"
+  }
+}

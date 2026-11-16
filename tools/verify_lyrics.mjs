@@ -133,6 +133,17 @@ try {
   check('时间轴偏移生效', (await ev("window.getLyricState().currentIdx")) === 0);
   await ev("window.setLyricOffset(0)");
 
+  const transport = await ev(`(() => {
+    window.applyTrack({status:'PLAYING',position:40,duration:200,sampledAtMs:Date.now()-400,playbackRate:1});
+    return window.getPlaybackPosition(600);
+  })()`);
+  check('渲染时钟补偿 400ms 采样/IPC 延迟', Math.abs(transport - 41) < 0.03, `position=${transport}`);
+  const pausedClock = await ev(`(() => {
+    window.applyTrack({status:'PAUSED',position:42,duration:200,sampledAtMs:Date.now()-400});
+    return { now: window.getPlaybackPosition(0), later: window.getPlaybackPosition(5000) };
+  })()`);
+  check('暂停后长时间也不推进歌词', pausedClock.now === 42 && pausedClock.later === 42, JSON.stringify(pausedClock));
+
   // Failure path falls back to demo lines without crashing.
   const failed = await ev("window.applyLyrics({ok:false,error:'not-found'})");
   check('未找到歌词时回退演示占位', failed.mode === 'demo' && failed.lines === 8, JSON.stringify(failed));

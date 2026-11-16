@@ -52,12 +52,28 @@ while ($true) {
 
         if ($null -eq $s) {
             Emit @{ ok = $true; active = $false; app = ''; title = ''; artist = ''; album = '';
-                    status = 'NONE'; statusValue = -1; position = 0; duration = 0; hasCover = $false }
+                    status = 'NONE'; statusValue = -1; position = 0; duration = 0; hasCover = $false;
+                    sampledAtMs = ([DateTimeOffset]::UtcNow).ToUnixTimeMilliseconds(); playbackRate = 1.0 }
         } else {
             $p = Wait-WinRt $s.TryGetMediaPropertiesAsync() ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
             $tl = $s.GetTimelineProperties()
             $info = $s.GetPlaybackInfo()
             $sv = [int]$info.PlaybackStatus
+            $sampledAt = [DateTimeOffset]::UtcNow
+            $duration = $tl.EndTime.TotalSeconds
+            $position = $tl.Position.TotalSeconds
+            $rate = 1.0
+            try { if ($info.PlaybackRate -gt 0) { $rate = [double]$info.PlaybackRate } } catch { $rate = 1.0 }
+            if ($sv -eq 3) {
+                # SMTC Position belongs to LastUpdatedTime, not to the instant we poll it.
+                # Compensate here so polling never produces a sawtooth in word-level lyrics.
+                try {
+                    $sourceAge = ($sampledAt - [DateTimeOffset]$tl.LastUpdatedTime).TotalSeconds
+                    if ($sourceAge -gt 0) { $position += $sourceAge * $rate }
+                } catch { /* older SMTC client: keep its raw position */ }
+            }
+            if ($position -lt 0) { $position = 0 }
+            if ($duration -gt 0 -and $position -gt $duration) { $position = $duration }
             $name = if ($statusNames.ContainsKey($sv)) { $statusNames[$sv] } else { 'UNKNOWN' }
             Emit @{
                 ok = $true; active = $true
@@ -67,8 +83,10 @@ while ($true) {
                 album = $p.AlbumTitle
                 status = $name
                 statusValue = $sv
-                position = [math]::Round($tl.Position.TotalSeconds, 3)
-                duration = [math]::Round($tl.EndTime.TotalSeconds, 3)
+                position = [math]::Round($position, 3)
+                duration = [math]::Round($duration, 3)
+                sampledAtMs = $sampledAt.ToUnixTimeMilliseconds()
+                playbackRate = $rate
                 hasCover = ($null -ne $p.Thumbnail)
             }
         }

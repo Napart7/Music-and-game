@@ -39,12 +39,23 @@ jobs:
         run: |
           # A cold runner occasionally starts the browser slower than the CDP budget.
           # One retry per suite keeps a flaky browser launch from failing a release.
-          for suite in menu autofit preview; do
+          for suite in menu autofit preview tray_panel; do
             node "tools/verify_${suite}.mjs" && continue
             echo "::warning::verify_${suite} failed, retrying once"
             sleep 5
             node "tools/verify_${suite}.mjs"
           done
+
+      - name: Persistent tray panel (real Electron)
+        working-directory: app
+        env:
+          GL_TEST_USER_DATA: ${{ github.workspace }}/tools/.tmp/tray-ci-profile
+          GL_TEST_TRAY_PIN: '1'
+          GL_TRAY_PIN_QUIT: '1'
+          GL_TRAY_PIN_OUT: ${{ github.workspace }}/tools/.tmp/tray-pin-ci.json
+        run: |
+          npx electron .
+          node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync(process.env.GL_TRAY_PIN_OUT,'utf8'));console.log(JSON.stringify(r));if(!r.ok)process.exit(1)"
 
   # Same UI regressions on Linux: proves the renderer (layout / fonts / animations)
   # behaves identically off Windows. Uses the preinstalled Chrome via tools/cdp-env.mjs.
@@ -67,7 +78,7 @@ jobs:
         run: |
           # Same retry policy as Windows: the first headless launch on a fresh runner is
           # the slowest one and has been seen to miss the CDP window.
-          for suite in menu autofit preview; do
+          for suite in menu autofit preview tray_panel; do
             node "tools/verify_${suite}.mjs" && continue
             echo "::warning::verify_${suite} failed, retrying once"
             sleep 5

@@ -23,7 +23,7 @@ json_escape() {
 }
 
 emit_none() {
-  printf '%s\n' '{"ok":true,"active":false,"status":"NONE","statusValue":-1,"app":"","title":"","artist":"","album":"","position":0,"duration":0,"hasCover":false}'
+  printf '{"ok":true,"active":false,"status":"NONE","statusValue":-1,"app":"","title":"","artist":"","album":"","position":0,"duration":0,"hasCover":false,"sampledAtMs":%s,"playbackRate":1}\n' "$(printf '%(%s)T000' -1)"
 }
 
 while true; do
@@ -61,12 +61,13 @@ while true; do
 
   active="true"
   [ "$status" = "STOPPED" ] && active="false"
+  sampled_at="$(printf '%(%s)T000' -1)"
 
-  printf '{"ok":true,"active":%s,"status":"%s","statusValue":%s,"app":"%s","player":"%s","title":"%s","artist":"%s","album":"%s","position":%s,"duration":%s,"hasCover":%s,"coverUrl":%s}\n' \
+  printf '{"ok":true,"active":%s,"status":"%s","statusValue":%s,"app":"%s","player":"%s","title":"%s","artist":"%s","album":"%s","position":%s,"duration":%s,"hasCover":%s,"coverUrl":%s,"sampledAtMs":%s,"playbackRate":1}\n' \
     "$active" "$status" "$sval" \
     "$(json_escape "$player")" "$(json_escape "$player")" \
     "$(json_escape "$title")" "$(json_escape "$artist")" "$(json_escape "$album")" \
-    "$position" "$duration" "$has_cover" "$cover"
+    "$position" "$duration" "$has_cover" "$cover" "$sampled_at"
 
   sleep 0.5
 done

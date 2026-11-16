@@ -10,6 +10,7 @@ const require = createRequire(import.meta.url);
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const parse = require(path.join(ROOT, 'app/backends/parse.js'));
 const { backendFor, trayIconName } = require(path.join(ROOT, 'app/backends/index.js'));
+const PlaybackClock = require(path.join(ROOT, 'app/playback-clock.js'));
 
 const resolveStub = (n) => '/res/' + n;
 const results = [];
@@ -89,6 +90,63 @@ await check('依赖缺失错误行被识别', () => {
 await check('非 JSON 噪声行返回 null', () => {
   assert.equal(parse.parseMediaLine('playerctl: command not found'), null);
   assert.equal(parse.parseMediaLine(''), null);
+});
+
+await check('采样时间戳与播放速率被保留', () => {
+  const d = parse.parseMediaLine(JSON.stringify({ ok: true, status: 'PLAYING', position: 10,
+    sampledAtMs: 10000, playbackRate: 1.25 }));
+  assert.equal(d.sampledAtMs, 10000);
+  assert.equal(d.playbackRate, 1.25);
+});
+
+await check('旧后端缺时间戳时回退到接收时刻', () => {
+  const before = Date.now();
+  const d = parse.parseMediaLine(JSON.stringify({ ok: true, status: 'PLAYING', position: 10 }));
+  assert.ok(d.sampledAtMs >= before && d.sampledAtMs <= Date.now());
+  assert.equal(d.playbackRate, 1);
+});
+
+/* ---------- renderer playback clock ---------- */
+await check('播放中补偿采集/IPC 传输耗时', () => {
+  const p = PlaybackClock.estimatePosition({ position: 10, duration: 100, status: 'PLAYING',
+    sampledAtMs: 10000, playbackRate: 1 }, 10400, 250);
+  assert.ok(Math.abs(p - 10.65) < 0.00001);
+});
+
+await check('暂停样本不会向后推算', () => {
+  const p = PlaybackClock.estimatePosition({ position: 10, duration: 100, status: 'PAUSED',
+    sampledAtMs: 10000 }, 12000, 8000);
+  assert.equal(p, 10);
+});
+
+await check('超过旧版 2 秒上限仍连续推进', () => {
+  const p = PlaybackClock.estimatePosition({ position: 10, duration: 100, status: 'PLAYING',
+    sampledAtMs: 10000 }, 10000, 4500);
+  assert.equal(p, 14.5);
+});
+
+await check('采样时钟未来值不产生倒退', () => {
+  const p = PlaybackClock.estimatePosition({ position: 10, duration: 100, status: 'PLAYING',
+    sampledAtMs: 11000 }, 10000, 500);
+  assert.equal(p, 10.5);
+});
+
+await check('位置不会越过歌曲时长', () => {
+  const p = PlaybackClock.estimatePosition({ position: 99, duration: 100, status: 'PLAYING',
+    sampledAtMs: 10000 }, 10000, 5000);
+  assert.equal(p, 100);
+});
+
+await check('倍速播放按播放速率推进', () => {
+  const p = PlaybackClock.estimatePosition({ position: 10, duration: 100, status: 'PLAYING',
+    sampledAtMs: 10000, playbackRate: 2 }, 10000, 1000);
+  assert.equal(p, 12);
+});
+
+await check('缺时间戳兼容旧数据且不做虚假补偿', () => {
+  const p = PlaybackClock.estimatePosition({ position: 10, duration: 100, status: 'PLAYING' },
+    50000, 1000);
+  assert.equal(p, 11);
 });
 
 /* ---------- window probe contract ---------- */
