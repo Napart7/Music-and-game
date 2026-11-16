@@ -3,6 +3,7 @@ import { resolveEdge, toFileUrl, profileDir, CHROMIUM_ARGS } from './cdp-env.mjs
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -89,6 +90,35 @@ try {
   await ev("document.getElementById('close').click(); document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'})); window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))");
   check('关闭按钮与 Esc 都显式请求关闭', (await ev("window.__actions.filter(a=>a==='close').length")) === 2);
   check('菜单没有失焦自动关闭处理器', await ev("(() => { window.dispatchEvent(new Event('blur')); return window.__actions.filter(a=>a==='close').length===2 && !!window.getTrayPanelState(); })()"));
+  // DWM alpha-composites a transparent always-on-top window with the background: on a
+  // scaled display stale frames of a dark browser page bleed into the menu. Guard the
+  // fix in both the main-process window options and the panel's own CSS.
+  const mainSrc = fs.readFileSync(path.join(ROOT, 'app', 'main.js'), 'utf8');
+  const panelOptions = mainSrc.slice(mainSrc.indexOf('function openPinnedTray'),
+    mainSrc.indexOf('function togglePinnedTray'));
+  check('常驻菜单窗口使用不透明表面',
+    /transparent:\s*false/.test(panelOptions) &&
+    /backgroundColor:\s*'#[0-9a-fA-F]{6}'/.test(panelOptions), 'BrowserWindow options');
+  check('常驻菜单不存在透明窗口配置',
+    !/transparent:\s*true/.test(panelOptions) && !/#[0-9a-fA-F]{8}'/.test(panelOptions),
+    'no alpha channel');
+  const posFn = mainSrc.slice(mainSrc.indexOf('function trayPanelPosition'),
+    mainSrc.indexOf('function closePinnedTray'));
+  check('常驻菜单尺寸按工作区收敛',
+    /area\.width\s*-\s*16/.test(posFn) && /area\.height\s*-\s*16/.test(posFn) &&
+    /return\s*\{\s*x,\s*y,\s*width:\s*w,\s*height:\s*h\s*\}/.test(posFn));
+  const surface = await ev(`(() => {
+    const cs = (s) => getComputedStyle(document.querySelector(s));
+    const card = document.getElementById('trayPanel');
+    return { html: cs('html').backgroundColor, body: cs('body').backgroundColor,
+      image: cs('#trayPanel').backgroundImage,
+      cardH: card.getBoundingClientRect().height, viewport: window.innerHeight };
+  })()`);
+  const solid = (v) => !!v && !/rgba\(|transparent/i.test(v);
+  check('面板背景与卡片渐变均不透明且卡片铺满窗口',
+    solid(surface.html) && solid(surface.body) && !/rgba\(/.test(surface.image) &&
+    surface.cardH >= surface.viewport - 20, JSON.stringify(surface));
+
   check('页面无外部网络依赖', (await ev("performance.getEntriesByType('resource').filter(r=>/^https?:/.test(r.name)).length")) === 0);
   check('运行期无 JS 异常', errors.length === 0, errors.join(' | ') || 'none');
 } catch (e) {

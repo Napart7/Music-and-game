@@ -561,17 +561,22 @@ function trayPanelPosition(anchor, width, height) {
   const cx = a.x + (a.width || 0) / 2;
   const cy = a.y + (a.height || 0) / 2;
   const area = screen.getDisplayNearestPoint({ x: Math.round(cx), y: Math.round(cy) }).workArea;
-  let x = Math.round(cx - width / 2);
+  // A fixed 316x568 panel does not fit a small or heavily scaled display: clamping only
+  // y left the bottom of the menu off-screen and only its header was visible. Fit the
+  // requested size into the usable area first; the inner .body already scrolls.
+  const w = Math.max(280, Math.min(width, Math.round(area.width - 16)));
+  const h = Math.max(320, Math.min(height, Math.round(area.height - 16)));
+  let x = Math.round(cx - w / 2);
   // Windows taskbar is usually at the bottom; macOS menu bar is at the top. If there is
   // not enough room, flip to the other side and finally clamp to the usable work area.
   let y = process.platform === 'win32'
-    ? Math.round(a.y - height - 10)
+    ? Math.round(a.y - h - 10)
     : Math.round(a.y + (a.height || 0) + 10);
   if (y < area.y) y = Math.round(a.y + (a.height || 0) + 10);
-  if (y + height > area.y + area.height) y = Math.round(a.y - height - 10);
-  x = Math.max(area.x + 8, Math.min(x, area.x + area.width - width - 8));
-  y = Math.max(area.y + 8, Math.min(y, area.y + area.height - height - 8));
-  return { x, y, width, height };
+  if (y + h > area.y + area.height) y = Math.round(a.y - h - 10);
+  x = Math.max(area.x + 8, Math.min(x, area.x + area.width - w - 8));
+  y = Math.max(area.y + 8, Math.min(y, area.y + area.height - h - 8));
+  return { x, y, width: w, height: h };
 }
 
 function closePinnedTray() {
@@ -593,7 +598,14 @@ function openPinnedTray(anchor) {
     ...size,
     title: 'GlassLyricsTrayPanel',
     frame: false,
-    transparent: true,
+    // The panel must NOT be a transparent window. DWM alpha-composites a transparent
+    // always-on-top window with whatever sits behind it; on a 150% display with a dark
+    // browser page (and other GPU overlays) stale frames bleed into the menu, the card
+    // turns semi-transparent and source-code text appears "inside" the menu. An opaque
+    // window is composited as a normal surface, so no background content can show through.
+    transparent: false,
+    backgroundColor: '#0a111d',
+    roundedCorners: true,
     resizable: false,
     movable: true,
     minimizable: false,
@@ -602,8 +614,7 @@ function openPinnedTray(anchor) {
     alwaysOnTop: true,
     skipTaskbar: true,
     show: false,
-    hasShadow: false,
-    backgroundColor: '#00000000',
+    hasShadow: true,
     webPreferences: {
       preload: path.join(ROOT, 'tray-preload.js'),
       contextIsolation: true,

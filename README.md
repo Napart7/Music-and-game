@@ -130,7 +130,7 @@ npm start          # 开发运行
 npm run dist       # 打包到 ../dist
 ```
 
-回归测试不需要打包，用无头 Chrome/Edge + CDP 跑，共 330 项：
+回归测试不需要打包，用无头 Chrome/Edge + CDP 跑，共 334 项：
 
 ```bash
 node tools/check_compliance.mjs   # 发布门禁 44 项：文件 / 敏感信息 / 语法 / 换行符 / changelog 同步
@@ -141,7 +141,7 @@ node tools/verify_lyrics.mjs      # 24 项：歌词引擎、时间轴推进、�
 node tools/verify_menu.mjs        # 61 项：菜单、辉光、热键、拖动、漂浮
 node tools/verify_autofit.mjs     # 22 项：窗口自适应
 node tools/verify_preview.mjs     # 29 项：视觉预览页
-node tools/verify_tray_panel.mjs  # 10 项：常驻托盘面板 IPC
+node tools/verify_tray_panel.mjs  # 14 项：常驻托盘面板 IPC 与不透明表面
 node tools/verify_shatter.mjs     # 12 项：换行破碎飞散
 
 node tools/bench_perf.mjs         # 9 场景帧时间基准

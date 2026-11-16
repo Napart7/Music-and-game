@@ -49,7 +49,7 @@ UI 回归（需要 Chrome/Edge，用无头模式 + CDP）：
 node tools/verify_menu.mjs        # 主菜单 / 热键 / 穿透 / 性能 / Toast / 关于页 61 项
 node tools/verify_autofit.mjs     # 窗口自适配 22 项
 node tools/verify_preview.mjs     # 独立预览页 29 项
-node tools/verify_tray_panel.mjs  # 常驻托盘面板 IPC 契约 10 项
+node tools/verify_tray_panel.mjs  # 常驻托盘面板 IPC 契约与不透明表面 14 项
 node tools/verify_shatter.mjs     # 换行破碎飞散 12 项
 ```
 
@@ -61,7 +61,7 @@ GL_LONGRUN_MIN=60 node tools/bench_longrun.mjs  # 加速长跑（默认 60 虚�
 node tools/bench_lyrics.mjs       # 真实网络的连接延迟
 ```
 
-> 全部通过时的总项数是 **330 项**。数字对不上说明有断言被跳过，请检查输出里的 FAIL。
+> 全部通过时的总项数是 **334 项**。数字对不上说明有断言被跳过，请检查输出里的 FAIL。
 
 ---
 
