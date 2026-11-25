@@ -509,12 +509,17 @@
             <label class="switch"><input type="checkbox" id="hideNoGame" data-cfg="hideWhenNoGame"> 切出游戏时隐藏歌词</label>
           </div>
           <div class="kv" style="margin-top:12px"><span>当前跟随状态</span><span id="pFit2">等待捕捉…</span></div>
-          <div class="hint">只读前台窗口的位置和大小（GetForegroundWindow / GetWindowRect），不打开游戏进程、不读内存、不注入。跟随移动、缩放与多显示器，歌词字号和侧栏会按窗口尺寸自适应。</div>
+          <div class="hint">只读前台窗口的位置、大小、标题、窗口类名与窗口样式（GetForegroundWindow / GetWindowRect 等），不打开游戏进程、不读内存、不注入。带标题栏的程序、文档窗口、输入法与显卡覆盖层不会被当成游戏；跟随移动、缩放与多显示器，歌词字号和侧栏会按窗口尺寸自适应。</div>
         </div>
         <div class="card">
           <h4>跳过指定程序</h4>
           <input class="txt-input" id="excludeInput" data-cfg="excludeProcesses" placeholder="例如：Warframe.x64.exe, SomeGame.exe（逗号分隔）">
           <div class="hint">默认不排除任何程序。若你不想在某个游戏里显示歌词，把它的进程名填进来。</div>
+        </div>
+        <div class="card">
+          <h4>指定程序按游戏处理</h4>
+          <input class="txt-input" id="gameInput" data-cfg="gameProcesses" placeholder="例如：MyIndieGame.exe, SomeGame.exe（逗号分隔）">
+          <div class="hint">默认留空。带标题栏的窗口化独立游戏可能被保守判定漏掉，把它的进程名填进来即可优先跟随。输入法候选框、系统提示和显卡覆盖层仍不会跟随。</div>
         </div>
       </section>
 
@@ -1050,6 +1055,27 @@ function applyVisual(c) {
   }
 }
 
+// The main process reports WHY a window was rejected; show a readable reason instead of
+// an internal code so a wrong auto-fit can be fixed from the settings page right away.
+const FIT_REASON_TEXT = {
+  'waiting': '等待捕捉…',
+  'auto-fit-disabled': '自动捕捉已关闭',
+  'non-game-app': '当前是桌面应用，未跟随',
+  'overlay-or-launcher': '当前是覆盖层或启动器，未跟随',
+  'tool-window': '当前是工具/输入法窗口，未跟随',
+  'system-window-class': '当前是系统窗口，未跟随',
+  'app-window-class': '当前是应用窗口，未跟随',
+  'app-title': '当前是文档或网页窗口，未跟随',
+  'captioned-app': '当前是带标题栏的应用窗口，未跟随',
+  'small-or-captioned': '窗口较小，未跟随',
+  'too-small': '窗口过小，未跟随',
+  'excluded-by-config': '已在跳过名单中',
+  'below-min-size': '窗口小于跟随下限',
+  'desktop-or-hidden': '桌面或窗口已隐藏',
+  'no-window': '未找到前台窗口',
+  'display-lookup-failed': '无法读取显示器信息'
+};
+
 window.applyAutoFit = function (d) {
   if (!d) return null;
   lastFit = d;
@@ -1066,7 +1092,8 @@ window.applyAutoFit = function (d) {
     if (document.body.dataset.compact !== compact) document.body.dataset.compact = compact;
   }
   document.body.classList.toggle('dimmed', !d.active && !cfg.hideWhenNoGame && !!b);
-  const txt = d.active ? (b ? b.width + '×' + b.height + ' 跟随中' : '跟随中') : (d.reason || '未启用');
+  const txt = d.active ? (b ? b.width + '×' + b.height + ' 跟随中' : '跟随中')
+    : (FIT_REASON_TEXT[d.reason] || d.reason || '未启用');
   const pf = $('pFit'); if (pf && pf.textContent !== txt) pf.textContent = txt;
   const pf2 = $('pFit2'); if (pf2 && pf2.textContent !== txt) pf2.textContent = txt;
   return { scale: root.style.getPropertyValue('--ui-scale'), compact: document.body.dataset.compact,
@@ -1278,7 +1305,7 @@ document.querySelectorAll('[data-cfg]').forEach(el => {
     let v;
     if (el.type === 'checkbox') v = el.checked;
     else if (el.type === 'range' || el.type === 'number') v = Number(el.value);
-    else if (el.id === 'excludeInput') v = el.value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+    else if (el.id === 'excludeInput' || el.id === 'gameInput') v = el.value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
     else v = el.value;
     writeCfg(el.dataset.cfg, v);
     const out = document.querySelector('[data-out="' + el.dataset.cfg + '"]');

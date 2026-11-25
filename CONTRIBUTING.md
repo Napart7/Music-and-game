@@ -37,8 +37,8 @@ npm start          # 开发模式启动覆盖层
 
 ```bash
 node tools/check_compliance.mjs   # 合规门禁：必需文件 / 敏感信息 / 语法 / .sh 换行符 / changelog 同步
-node tools/verify_classify.mjs    # 窗口分类 51 项（游戏 / 桌面应用 / 覆盖层 / 启动器）
-node tools/verify_backends.mjs    # 三端后端契约、SMTC 状态枚举与自愈 41 项
+node tools/verify_classify.mjs    # 窗口分类 88 项（游戏 / 桌面应用 / 覆盖层 / 启动器 / 窗口形状 / 真机采样）
+node tools/verify_backends.mjs    # 三端后端契约、SMTC 状态枚举与自愈 43 项
 node tools/verify_providers.mjs   # 歌词源解析与清洗 36 项
 node tools/verify_lyrics.mjs      # 歌词引擎、时间轴与热路径 24 项
 ```
@@ -47,7 +47,7 @@ UI 回归（需要 Chrome/Edge，用无头模式 + CDP）：
 
 ```bash
 node tools/verify_menu.mjs        # 主菜单 / 热键 / 穿透 / 性能 / Toast / 关于页 61 项
-node tools/verify_autofit.mjs     # 窗口自适配 22 项
+node tools/verify_autofit.mjs     # 窗口自适配与窗口设置页 27 项
 node tools/verify_preview.mjs     # 独立预览页 29 项
 node tools/verify_tray_panel.mjs  # 常驻托盘面板 IPC 契约与不透明表面 14 项
 node tools/verify_shatter.mjs     # 换行破碎飞散 12 项
@@ -61,7 +61,7 @@ GL_LONGRUN_MIN=60 node tools/bench_longrun.mjs  # 加速长跑（默认 60 虚�
 node tools/bench_lyrics.mjs       # 真实网络的连接延迟
 ```
 
-> 全部通过时的总项数是 **334 项**。数字对不上说明有断言被跳过，请检查输出里的 FAIL。
+> 全部通过时的总项数是 **378 项**。数字对不上说明有断言被跳过，请检查输出里的 FAIL。
 
 ---
 

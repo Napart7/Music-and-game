@@ -155,6 +155,11 @@ await check('缺时间戳兼容旧数据且不做虚假补偿', () => {
 /* ---------- window probe contract ---------- */
 const winWin = JSON.stringify({ ok: true, rect: [10, 20, 800, 600], rectPhysical: [15, 30, 1200, 900],
   process: 'Warframe.x64', className: 'Warframe', caption: 'Warframe', visible: true });
+const winWinShape = JSON.stringify({ ok: true, rect: [0, 0, 1707, 1067],
+  process: 'TextInputHost', className: 'Windows.UI.Core.CoreWindow', title: 'Windows 输入体验',
+  caption: false, toolWindow: false, thickFrame: false, visible: true });
+const winWinBoolCaption = JSON.stringify({ ok: true, rect: [0, 0, 1920, 1080],
+  process: 'FancyApp', title: '', caption: true, visible: true });
 const macWin = JSON.stringify({ ok: true, rect: [0, 25, 1440, 875], process: 'Game', title: 'Game', visible: true });
 const linuxWin = JSON.stringify({ ok: true, rect: [0, 0, 1920, 1080], process: 'game', className: 'game.Game',
   title: 'Game', visible: true });
@@ -167,10 +172,27 @@ await check('Windows 窗口行解析（caption → title）', () => {
   assert.deepEqual(d.rectPhysical, [15, 30, 1200, 900]);
 });
 
+await check('Windows 新探针：窗口样式字段原样透传', () => {
+  const d = parse.parseWindowLine(winWinShape);
+  assert.equal(d.caption, false);
+  assert.equal(d.toolWindow, false);
+  assert.equal(d.thickFrame, false);
+  assert.equal(d.className, 'Windows.UI.Core.CoreWindow');
+  assert.equal(d.title, 'Windows 输入体验');
+});
+
+await check('Windows 新探针：布尔 caption 不会被写成标题', () => {
+  const d = parse.parseWindowLine(winWinBoolCaption);
+  assert.equal(d.caption, true);
+  assert.equal(d.title, '');
+});
+
 await check('macOS 窗口行解析', () => {
   const d = parse.parseWindowLine(macWin);
   assert.deepEqual(d.rect, [0, 25, 1440, 875]);
   assert.equal(d.process, 'Game');
+  assert.equal('caption' in d, false);
+  assert.equal('toolWindow' in d, false);
 });
 
 await check('Linux 窗口行解析', () => {

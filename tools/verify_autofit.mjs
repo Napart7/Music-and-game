@@ -154,6 +154,43 @@ try {
   const o2 = await overlap();
   check('紧凑布局中央区仍留空', !o2.left && !o2.right, JSON.stringify(o2));
 
+  const gameInput = await ev(`(() => {
+    const el = document.getElementById('gameInput');
+    if (!el) return null;
+    window.syncConfig({hideWhenNoGame:false, autoFit:true, openAtLogin:false, layout:'split',
+      gameProcesses:['MyIndieGame.exe','OtherGame']});
+    return { cfg: el.dataset.cfg, value: el.value };
+  })()`);
+  check('设置页提供「指定程序按游戏处理」输入框',
+    !!gameInput && gameInput.cfg === 'gameProcesses', JSON.stringify(gameInput));
+  check('白名单数组回填为逗号分隔文本',
+    /MyIndieGame\.exe, OtherGame/.test(gameInput?.value || ''), gameInput?.value);
+
+  const parsedList = await ev(`(() => {
+    const el = document.getElementById('gameInput');
+    el.value = 'A.exe，B.exe, , C';
+    let sent = null;
+    const old = window.glass;
+    window.glass = Object.assign({}, old || {}, { setConfig: (v) => { sent = v; } });
+    el.dispatchEvent(new Event('input'));
+    if (old === undefined) delete window.glass; else window.glass = old;
+    return sent && sent.gameProcesses;
+  })()`);
+  check('白名单输入按中英文逗号拆分为数组',
+    JSON.stringify(parsedList) === JSON.stringify(['A.exe', 'B.exe', 'C']), JSON.stringify(parsedList));
+
+  const reasonText = await ev(`(() => {
+    window.applyAutoFit({active:false, reason:'captioned-app', rect:[0,0,1707,1067], bounds:null});
+    return document.getElementById('pFit2').textContent;
+  })()`);
+  check('未跟随时显示中文判定原因', /带标题栏/.test(reasonText) && !/captioned-app/.test(reasonText), reasonText);
+
+  const excludedText = await ev(`(() => {
+    window.applyAutoFit({active:false, excluded:true, reason:'excluded-by-config', bounds:null});
+    return document.getElementById('pFit').textContent;
+  })()`);
+  check('跳过名单原因可读', /跳过名单/.test(excludedText), excludedText);
+
   check('运行期无 JS 异常', errors.length === 0, errors.join(' | ') || 'none');
 } catch (e) {
   check('测试执行未中断', false, String(e && e.stack || e));

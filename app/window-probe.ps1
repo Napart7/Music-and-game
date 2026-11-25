@@ -29,6 +29,9 @@ public static class GlassWin32 {
   public static long Style(IntPtr h) {
     return IntPtr.Size == 8 ? GetWindowLongPtr64(h, -16).ToInt64() : (long)GetWindowLong32(h, -16);
   }
+  public static long StyleEx(IntPtr h) {
+    return IntPtr.Size == 8 ? GetWindowLongPtr64(h, -20).ToInt64() : (long)GetWindowLong32(h, -20);
+  }
 }
 '@ -ErrorAction Stop
 
@@ -59,7 +62,12 @@ while ($true) {
     try { $pname = (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch { }
 
     $style = [GlassWin32]::Style($h)
+    $exStyle = [GlassWin32]::StyleEx($h)
     $caption = (($style -band 0x00C00000) -eq 0x00C00000)
+    # WS_EX_TOOLWINDOW marks IME candidates, status popups and GPU overlays. Those windows
+    # are often fullscreen and borderless, so geometry alone mistakes them for games.
+    $toolWindow = (($exStyle -band 0x00000080) -ne 0)   # WS_EX_TOOLWINDOW
+    $thickFrame = (($style -band 0x00040000) -ne 0)     # WS_THICKFRAME
     $desktopHwnds = @([GlassWin32]::GetDesktopWindow().ToInt64(), [GlassWin32]::GetShellWindow().ToInt64())
 
     $obj = @{
@@ -76,7 +84,10 @@ while ($true) {
       visible = [GlassWin32]::IsWindowVisible($h)
       minimized = [GlassWin32]::IsIconic($h)
       caption = $caption
+      toolWindow = $toolWindow
+      thickFrame = $thickFrame
       style = $style
+      exStyle = $exStyle
       desktop = ($desktopHwnds -contains $h.ToInt64())
       heartbeat = $false
     }

@@ -78,6 +78,9 @@ const DEFAULTS = {
   // Empty by default: auto-fit only reads window geometry, never touches a game process.
   // Users who prefer to opt out on certain titles can still list them here.
   excludeProcesses: [],
+  // Manually confirm a title as a game. Useful for small/renamed indie games that the
+  // conservative app-vetoes cannot prove; the OS/tool-window vetoes still apply.
+  gameProcesses: [],
   minWindowWidth: 640,
   minWindowHeight: 400,
   // --- lyrics: platform-aware providers ---
@@ -168,6 +171,7 @@ function classifyForFit(info, scale) {
     minW: 320,
     minH: 240,
     exclude: config.excludeProcesses || [],
+    allow: config.gameProcesses || [],
     forced: process.env.GL_FORCE_GAME_PROCESS || ''
   });
 }
@@ -882,7 +886,7 @@ function setConfigValue(patch) {
     if ('lyricOffsetMs' in (patch || {})) win.webContents.send('lyric-offset', config.lyricOffsetMs);
   }
   if ('lyricSource' in (patch || {})) refreshLyrics();
-  if (['autoFit', 'hideWhenNoGame', 'excludeProcesses', 'displayIndex'].some((k) => k in (patch || {}))) {
+  if (['autoFit', 'hideWhenNoGame', 'excludeProcesses', 'gameProcesses', 'displayIndex'].some((k) => k in (patch || {}))) {
     if (lastWindowInfo) applyWindowFit(lastWindowInfo);
   }
   rebuildTray();

@@ -105,13 +105,25 @@ function parseWindowLine(line) {
   try { d = JSON.parse(s); } catch { return null; }
   if (!d || typeof d !== 'object') return null;
   const rect = Array.isArray(d.rect) ? d.rect.map(num) : null;
+  // Legacy probes used `caption` as a text title. The current Windows probe emits it as a
+  // WS_CAPTION boolean plus a separate `title`; never stringify a boolean into the title.
+  const legacyTitle = typeof d.caption === 'string' ? d.caption : '';
+  const flag = (v) => (typeof v === 'boolean' ? v : (v === 0 || v === 1 ? !!v : undefined));
+  // Shape signals drive the game/app vetoes in window-classify.js. They are Windows-only:
+  // macOS/Linux payloads simply omit them and keep the pure geometry fallback.
+  const shape = {};
+  for (const key of ['caption', 'toolWindow', 'thickFrame']) {
+    const v = flag(d[key]);
+    if (v !== undefined) shape[key] = v;
+  }
   return {
     ok: d.ok !== false,
     rect,
     rectPhysical: Array.isArray(d.rectPhysical) ? d.rectPhysical.map(num) : null,
     process: String(d.process || ''),
-    title: String(d.title || d.caption || ''),
+    title: String(d.title || legacyTitle || ''),
     className: String(d.className || ''),
+    ...shape,
     minimized: !!d.minimized,
     visible: d.visible !== false,
     desktop: !!d.desktop,

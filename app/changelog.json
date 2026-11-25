@@ -2,6 +2,17 @@
   "generatedFrom": "CHANGELOG.md",
   "versions": [
     {
+      "version": "1.5.4",
+      "date": "2026-11-16",
+      "highlights": [
+        "旧的判定只看窗口面积：任何铺满屏幕、没有标题栏的窗口都会被认成游戏。本机采样直接复现了误判——Windows 输入体验（TextInputHost）与输入法助手的全屏透明窗口、NVIDIA…",
+        "改为多信号判定：进程名黑名单（144 个系统组件、浏览器、播放器、办公软件、直播/截图工具、启动器）先否决；再用探针采集的 WS_EX_TOOLWINDOW、窗口类名（系统 UI / Chr…",
+        "进程名游戏提示从子串匹配改为整词匹配：rust 不再把 RustDesk 当游戏，arma 不再命中 ARM 工具。",
+        "补上失效的信号链路：window-probe.ps1 新增 toolWindow / thickFrame 与 exStyle 采集，但 parseWindowLine() 原本只保留标题…",
+        "判定原则明确为宁可漏判、不可误判：漏掉一个冷门游戏只是不自动贴合（整屏模式仍可用），误判则会盖住别的软件。为避免漏判无法自救，新增手动白名单。"
+      ]
+    },
+    {
       "version": "1.5.3",
       "date": "2026-11-16",
       "highlights": [
