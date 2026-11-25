@@ -4,7 +4,7 @@
 
 程序开一个透明、置顶、鼠标穿透的窗口，歌词排在画面左右两侧，中间留给准星和视野。播放信息取自系统媒体接口（Windows SMTC、macOS AppleScript、Linux MPRIS），歌词取自各音乐平台的公开接口和 LRCLIB。不注入游戏进程，不读游戏内存，不采集音频。
 
-![游戏内效果：歌词浮在画面两侧，中央留空](docs/preview/game.jpg)
+![歌词覆盖层：主歌词、下一句与播放进度](docs/preview/game.png)
 
 下载：[Releases](https://github.com/Napart7/Music-and-game/releases)。
 版本历史和每次改了什么在 [CHANGELOG.md](CHANGELOG.md)。
